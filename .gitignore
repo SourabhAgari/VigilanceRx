@@ -1,0 +1,22 @@
+# Build
+target/
+*.class
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# §9 — secrets & state, never committed
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+.env
+*.env
+kubeconfig*
+
+# Local runtime artifacts
+checkpoints/
