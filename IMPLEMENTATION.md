@@ -27,7 +27,7 @@ requires restoring it (one `terraform apply`).
 
 | Phase | Name | Env | Status |
 |---|---|---|---|
-| 0 | Repo scaffolding & local environment | local | ☐ not started |
+| 0 | Repo scaffolding & local environment | local | ◐ in progress |
 | 1 | Infrastructure bootstrap (Terraform) | cloud | ☐ not started |
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
 | 3 | Domain model & interval logic | local | ☐ not started |
@@ -50,9 +50,14 @@ Status values: ☐ not started · ◐ in progress · ✅ done · ⏸ blocked (no
 **Goal**: a repo where `docker-compose up` gives a working local Redpanda and
 `mvn verify` runs (empty) tests, with CI and Sonar wired from commit one.
 
-- [ ] Initialize repo: `pom.xml` (coordinates per spec, Java 17, dependency
+- [x] Initialize repo: `pom.xml` (coordinates per spec, Java 17, dependency
       versions per spec "Key dependencies"), `.gitignore`, `Makefile`
-- [ ] `docker-compose.yml`: Redpanda broker + schema registry (single node)
+      — done 2026-07-16: issue #2 / PR #8 merged; `make build` → BUILD SUCCESS
+      (0 tests, surefire+failsafe wired); `target/`+`.idea/` untracked verified.
+      Avro pinned 1.11.4 (CVE-2024-47561 fix, within spec 1.11.x).
+- [x] `docker-compose.yml`: Redpanda broker + schema registry (single node)
+      — done 2026-07-16: issue #3; container healthy, `rpk cluster info` shows
+      broker at localhost:9092, registry `/subjects` → `[]` (v24.1.7 pinned)
 - [ ] `scripts/bootstrap-local-topics.sh`: create all 7 topics, register
       `.avsc` schemas with `FULL_TRANSITIVE` compatibility
 - [ ] Avro schemas: `rx-fill-event.avsc`, `gap-risk-alert.avsc`,
