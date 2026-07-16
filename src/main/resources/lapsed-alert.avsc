@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "LapsedAlert",
+  "namespace": "com.healthcare.rxvigilance.avro",
+  "doc": "Supply exhausted with no refill; immutable point-in-time fact",
+  "fields": [
+    { "name": "alertId",   "type": "string" },
+    { "name": "memberId",  "type": "string" },
+    { "name": "drugClass", "type": "string" },
+    { "name": "lapsedOn",  "type": { "type": "int", "logicalType": "date" } },
+    { "name": "emittedAt", "type": { "type": "long", "logicalType": "timestamp-millis" } }
+  ]
+}

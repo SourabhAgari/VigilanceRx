@@ -1,0 +1,27 @@
+ {
+    "type": "record",
+    "name": "RxFillEvent",
+    "namespace": "com.healthcare.rxvigilance.avro",
+    "doc": "One pharmacy fill or reversal; one claim = one NDC (NCPDP grain)",
+    "fields": [
+      { "name": "eventType",
+        "type": { "type": "enum", "name": "EventType",
+                  "symbols": ["FILL", "REVERSAL"] } },
+      { "name": "claimId",   "type": "string" },
+      { "name": "memberId",  "type": "string" },
+      { "name": "ndcCode",   "type": "string" },
+      { "name": "fillDate",  "type": { "type": "int", "logicalType": "date" } },
+      { "name": "daySupply", "type": "int" },
+      { "name": "quantity",
+        "type": { "type": "bytes", "logicalType": "decimal",
+                  "precision": 10, "scale": 2 } },
+      { "name": "pharmacyId", "type": "string" },
+      { "name": "rxNumber",   "type": "string" },
+      { "name": "refillsAuthorized", "type": "int" },
+      { "name": "dispensingChannel",
+        "type": { "type": "enum", "name": "Channel",
+                  "symbols": ["RETAIL", "MAIL_ORDER", "SPECIALTY", "UNKNOWN"],
+                  "default": "UNKNOWN" } },
+      { "name": "originalClaimId", "type": ["null", "string"], "default": null }
+    ]
+  }
