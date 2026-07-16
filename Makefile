@@ -22,3 +22,6 @@ run:
                            --checkpoint.dir=file:///tmp/rx-vigilance-checkpoints"
 push:
 	git push origin HEAD
+
+fetch:
+	git fetch origin
