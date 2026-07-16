@@ -23,6 +23,12 @@ jobs:
       - name: Build and test
         run: mvn -B clean verify
 
+      - name: Set up JDK 21 (Sonar scanner runtime only)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Sonar Analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
