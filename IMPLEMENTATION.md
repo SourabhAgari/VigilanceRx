@@ -27,7 +27,7 @@ requires restoring it (one `terraform apply`).
 
 | Phase | Name | Env | Status |
 |---|---|---|---|
-| 0 | Repo scaffolding & local environment | local | ◐ in progress |
+| 0 | Repo scaffolding & local environment | local | ✅ done 2026-07-16 |
 | 1 | Infrastructure bootstrap (Terraform) | cloud | ☐ not started |
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
 | 3 | Domain model & interval logic | local | ☐ not started |
@@ -86,9 +86,14 @@ Status values: ☐ not started · ◐ in progress · ✅ done · ⏸ blocked (no
       invariants (§4), testing/git/security standards
 
 **Exit criteria**
-- `docker-compose up -d && ./scripts/bootstrap-local-topics.sh` succeeds;
+- [x] `docker-compose up -d && ./scripts/bootstrap-local-topics.sh` succeeds;
   `rpk topic list` shows all 7 topics; schema registry lists 3 subjects
-- CI green on a trivial PR; Sonar quality gate reports on the PR
+  — confirmed 2026-07-16 (re-verified at phase close; evidence in epic #1)
+- [x] CI green on a trivial PR; Sonar quality gate reports on the PR
+  — confirmed 2026-07-16: PR #12 build + SonarCloud Code Analysis checks
+  green, quality gate decoration on the PR
+
+Phase closed 2026-07-16 — epic #1 closed with all children (#2–#7) done.
 
 ---
 
