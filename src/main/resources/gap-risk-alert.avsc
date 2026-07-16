@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "GapRiskAlert",
+  "namespace": "com.healthcare.rxvigilance.avro",
+  "doc": "Supply will lapse within lead-time days; immutable point-in-time fact — latest alert per (memberId, drugClass) supersedes earlier ones",
+  "fields": [
+    { "name": "alertId",   "type": "string" },
+    { "name": "memberId",  "type": "string" },
+    { "name": "drugClass", "type": "string" },
+    { "name": "expiresOn", "type": { "type": "int", "logicalType": "date" } },
+    { "name": "leadDays",  "type": "int" },
+    { "name": "emittedAt", "type": { "type": "long", "logicalType": "timestamp-millis" } }
+  ]
+}

@@ -58,10 +58,14 @@ Status values: ☐ not started · ◐ in progress · ✅ done · ⏸ blocked (no
 - [x] `docker-compose.yml`: Redpanda broker + schema registry (single node)
       — done 2026-07-16: issue #3; container healthy, `rpk cluster info` shows
       broker at localhost:9092, registry `/subjects` → `[]` (v24.1.7 pinned)
-- [ ] `scripts/bootstrap-local-topics.sh`: create all 7 topics, register
+- [x] `scripts/bootstrap-local-topics.sh`: create all 7 topics, register
       `.avsc` schemas with `FULL_TRANSITIVE` compatibility
-- [ ] Avro schemas: `rx-fill-event.avsc`, `gap-risk-alert.avsc`,
+      — done 2026-07-16: issue #4; idempotent (double-run verified), health-gated;
+      `rpk topic list` → 7 topics (rx-fill-events p=3), 3 subjects FULL_TRANSITIVE
+- [x] Avro schemas: `rx-fill-event.avsc`, `gap-risk-alert.avsc`,
       `lapsed-alert.avsc` (fields per spec Domain model)
+      — done 2026-07-16: issue #4; all fields per spec, registry accepted all 3;
+      Channel enum default UNKNOWN, EventType no default (dead-letter by design)
 - [ ] `.github/workflows/ci.yml`: `mvn verify` + docker build (no push)
 - [ ] SonarQube Cloud: import repo, enable PR decoration, add analysis step
       to `ci.yml`; install SonarQube for IDE (IntelliJ, connected mode)
@@ -315,3 +319,6 @@ README; repo reproducible from clean clone + documented secrets
 | D2 | 2026-07-15 | Phases 1–2 front-loaded before pipeline logic | Bank all cloud glue inside the ~20-day trial window |
 | D3 | 2026-07-15 | `IntervalMerger` as pure Flink-free class, built & tested first | Highest-defect-risk logic; exhaustive plain-JUnit edge cases |
 | D-open-3 | — | Dedupe strategy: leaning idempotent interval-merge over recently-seen set | Confirm or reverse during Phase 3 testing (spec open question #3) |
+| D4 | 2026-07-16 | `quantity` Avro type: `decimal(precision=10, scale=2)` | NCPDP billing quantities are 2-decimal; precision/scale frozen once registered under FULL_TRANSITIVE |
+| D5 | 2026-07-16 | Avro namespace `com.healthcare.rxvigilance.avro` (separate from domain package) | Avoid collision between Avro-generated classes and hand-written Flink-free domain records (Phase 3) |
+| D6 | 2026-07-16 | Local partitions: `rx-fill-events`=3, all other topics=1, r=1 | Multi-partition source reproduces idle-partition watermark behavior locally (§4 idleness invariant testable) |
