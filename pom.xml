@@ -18,6 +18,9 @@
         <junit.version>5.10.2</junit.version>
         <assertj.version>3.25.3</assertj.version>
         <testcontainers.version>1.19.8</testcontainers.version>
+        <sonar.organization>sourabhagari</sonar.organization>
+        <sonar.projectKey>SourabhAgari_VigilanceRx</sonar.projectKey>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
     </properties>
 
     <dependencies>
@@ -159,7 +162,26 @@
                     <classpathScope>compile</classpathScope>  <!-- pulls provided-scope Flink in -->
                 </configuration>
             </plugin>
+
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
-
-</project>
+</project>                                                                                                                                                                                     

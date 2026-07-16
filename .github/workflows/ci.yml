@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -20,6 +22,11 @@ jobs:
 
       - name: Build and test
         run: mvn -B clean verify
+
+      - name: Sonar Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: mvn -B sonar:sonar
 
       - name: Docker build (no push)
         if: hashFiles('Dockerfile') != ''    # activates when Phase 2 adds it
