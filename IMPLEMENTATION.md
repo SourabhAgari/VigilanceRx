@@ -70,8 +70,14 @@ Status values: ☐ not started · ◐ in progress · ✅ done · ⏸ blocked (no
       — done 2026-07-16: issue #5 / PR #11; green on PR (42s) and main push (31s),
       Maven cache keyed on pom hash; docker step gated on Dockerfile existence
       (activates in Phase 2)
-- [ ] SonarQube Cloud: import repo, enable PR decoration, add analysis step
+- [x] SonarQube Cloud: import repo, enable PR decoration, add analysis step
       to `ci.yml`; install SonarQube for IDE (IntelliJ, connected mode)
+      — done 2026-07-16: issue #6 / PR #12; CI-based analysis (Automatic
+      Analysis off), `mvn sonar:sonar` via SONAR_TOKEN secret, checkout
+      fetch-depth 0; jacoco 0.8.12 wired for coverage; SonarCloud Code
+      Analysis check green + PR decoration on #12; IntelliJ connected mode
+      bound to SourabhAgari_VigilanceRx, verified via planted-finding
+      round trip (S1135)
 - [ ] `CLAUDE.md`: operating rules (plan-before-apply, local-default,
       invariants from spec "Notes for Claude Code", doc pointers)
 
