@@ -66,7 +66,10 @@ Status values: ☐ not started · ◐ in progress · ✅ done · ⏸ blocked (no
       `lapsed-alert.avsc` (fields per spec Domain model)
       — done 2026-07-16: issue #4; all fields per spec, registry accepted all 3;
       Channel enum default UNKNOWN, EventType no default (dead-letter by design)
-- [ ] `.github/workflows/ci.yml`: `mvn verify` + docker build (no push)
+- [x] `.github/workflows/ci.yml`: `mvn verify` + docker build (no push)
+      — done 2026-07-16: issue #5 / PR #11; green on PR (42s) and main push (31s),
+      Maven cache keyed on pom hash; docker step gated on Dockerfile existence
+      (activates in Phase 2)
 - [ ] SonarQube Cloud: import repo, enable PR decoration, add analysis step
       to `ci.yml`; install SonarQube for IDE (IntelliJ, connected mode)
 - [ ] `CLAUDE.md`: operating rules (plan-before-apply, local-default,
