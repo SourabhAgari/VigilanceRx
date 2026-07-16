@@ -78,8 +78,12 @@ Status values: ☐ not started · ◐ in progress · ✅ done · ⏸ blocked (no
       Analysis check green + PR decoration on #12; IntelliJ connected mode
       bound to SourabhAgari_VigilanceRx, verified via planted-finding
       round trip (S1135)
-- [ ] `CLAUDE.md`: operating rules (plan-before-apply, local-default,
+- [x] `CLAUDE.md`: operating rules (plan-before-apply, local-default,
       invariants from spec "Notes for Claude Code", doc pointers)
+      — done 2026-07-16: committed in ec57caa with the spec docs; reviewed
+      against task scope — covers doc hierarchy, plan-before-apply +
+      explain-first workflow, local-default environments, all spec
+      invariants (§4), testing/git/security standards
 
 **Exit criteria**
 - `docker-compose up -d && ./scripts/bootstrap-local-topics.sh` succeeds;
