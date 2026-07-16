@@ -20,3 +20,5 @@ run:
               -Dexec.args="--kafka.brokers=localhost:9092 \
                            --schema.registry.url=http://localhost:8081 \
                            --checkpoint.dir=file:///tmp/rx-vigilance-checkpoints"
+push:
+	git push origin HEAD
