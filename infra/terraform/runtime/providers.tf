@@ -3,7 +3,7 @@ terraform {
 
   backend "gcs" {
     bucket = "vigilancerx-502702-tf-state"
-    prefix = "platform"
+    prefix = "runtime"
   }
 
   required_providers {
@@ -11,9 +11,9 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.0"
     }
-    redpanda = {
-      source  = "redpanda-data/redpanda"
-      version = "~> 1.0"
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.0"
     }
   }
 }
@@ -22,5 +22,3 @@ provider "google" {
   project = var.project_id
   region  = var.region
 }
-
-provider "redpanda" {}
