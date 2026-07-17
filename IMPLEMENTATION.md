@@ -107,9 +107,13 @@ Structure per D8: two stacks split by lifecycle — `infra/terraform/platform/`
 `infra/terraform/runtime/` (GKE + Helm; disposable, the one-click target).
 Epic #17; child issues #18–#23.
 
-- [ ] #18: `scripts/bootstrap-tf-state.sh` (one-time GCS state bucket) +
+- [x] #18: `scripts/bootstrap-tf-state.sh` (one-time GCS state bucket) +
       `platform/` & `runtime/` providers.tf/variables.tf — google + redpanda
       + helm providers, GCS backend with prefix-separated state per stack
+      — done 2026-07-17: PR #24 merged; bootstrap script idempotent
+      (double-run verified); `terraform init`+`validate` green in both stacks
+      vs GCS backend (google v6.50.0, redpanda v1.9.0, helm ~>3.0 pinned via
+      committed lock files); project vigilancerx-502702, us-central1
 - [ ] #19: `runtime/gke.tf`: zonal cluster `rx-vigilance-gke`, single-node
       e2-standard-4 spot pool (D7), Workload Identity; `platform/gcs.tf`:
       checkpoint bucket + SA binding; GCP budget alert (D7)
