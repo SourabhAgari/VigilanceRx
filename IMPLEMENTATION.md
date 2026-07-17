@@ -28,7 +28,7 @@ requires restoring it (one `terraform apply`).
 | Phase | Name | Env | Status |
 |---|---|---|---|
 | 0 | Repo scaffolding & local environment | local | ✅ done 2026-07-16 |
-| 1 | Infrastructure bootstrap (Terraform) | cloud | ☐ not started |
+| 1 | Infrastructure bootstrap (Terraform) | cloud | ◐ in progress (started 2026-07-17) |
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
 | 3 | Domain model & interval logic | local | ☐ not started |
 | 4 | Config, serialization, watermarks | local | ☐ not started |
@@ -102,19 +102,28 @@ Phase closed 2026-07-16 — epic #1 closed with all children (#2–#7) done.
 **Goal**: all cloud infrastructure exists via `terraform apply` and nothing
 else. Burn trial time on config, not clicks.
 
-- [ ] `scripts/bootstrap-tf-state.sh`: one-time GCS bucket for Terraform state
-- [ ] `infra/terraform/providers.tf`: google + redpanda + helm providers,
-      GCS state backend
-- [ ] `gke.tf`: zonal cluster `rx-vigilance-gke`, small node pool,
-      Workload Identity; `gcs.tf`: checkpoint bucket + SA binding
-- [ ] `redpanda.tf`: all 7 topics, service user + ACLs, schema-registry
-      subjects with `FULL_TRANSITIVE` (mirror of Phase 0 local bootstrap)
-- [ ] `helm.tf`: cert-manager, Flink Kubernetes Operator,
-      kube-prometheus-stack releases
-- [ ] `k8s/namespace.yaml`, `k8s/flink/flink-serviceaccount.yaml`
-- [ ] Kafka credentials as Kubernetes Secret (manual creation documented;
-      never committed)
-- [ ] Document `terraform destroy` / re-`apply` idle-cost workflow in README
+Structure per D8: two stacks split by lifecycle — `infra/terraform/platform/`
+(Redpanda + GCS; cheap, persistent, never destroyed) and
+`infra/terraform/runtime/` (GKE + Helm; disposable, the one-click target).
+Epic #17; child issues #18–#23.
+
+- [ ] #18: `scripts/bootstrap-tf-state.sh` (one-time GCS state bucket) +
+      `platform/` & `runtime/` providers.tf/variables.tf — google + redpanda
+      + helm providers, GCS backend with prefix-separated state per stack
+- [ ] #19: `runtime/gke.tf`: zonal cluster `rx-vigilance-gke`, single-node
+      e2-standard-4 spot pool (D7), Workload Identity; `platform/gcs.tf`:
+      checkpoint bucket + SA binding; GCP budget alert (D7)
+- [ ] #20: `platform/redpanda.tf`: all 7 topics, service user + ACLs,
+      schema-registry subjects with `FULL_TRANSITIVE` (mirror of Phase 0
+      local bootstrap)
+- [ ] #21: `runtime/helm.tf`: cert-manager, Flink Kubernetes Operator,
+      kube-prometheus-stack releases (depends_on chain per CLAUDE.md §10)
+- [ ] #22: `k8s/namespace.yaml`, `k8s/flink/flink-serviceaccount.yaml`;
+      Kafka credentials as Kubernetes Secret created from env vars by the
+      infra-up script (never committed, never in Terraform state)
+- [ ] #23: `make infra-up` / `make infra-down` one-click wrappers (D8);
+      document destroy / re-`apply` idle-cost workflow in README;
+      round-trip verification
 
 **Exit criteria**
 - Fresh `terraform apply` from empty state completes without manual steps
@@ -340,3 +349,5 @@ README; repo reproducible from clean clone + documented secrets
 | D4 | 2026-07-16 | `quantity` Avro type: `decimal(precision=10, scale=2)` | NCPDP billing quantities are 2-decimal; precision/scale frozen once registered under FULL_TRANSITIVE |
 | D5 | 2026-07-16 | Avro namespace `com.healthcare.rxvigilance.avro` (separate from domain package) | Avoid collision between Avro-generated classes and hand-written Flink-free domain records (Phase 3) |
 | D6 | 2026-07-16 | Local partitions: `rx-fill-events`=3, all other topics=1, r=1 | Multi-partition source reproduces idle-partition watermark behavior locally (§4 idleness invariant testable) |
+| D7 | 2026-07-17 | GKE runtime: single-node zonal pool, e2-standard-4 **spot**, + GCP budget alert | GCP free-trial budget (₹28,016 / 50 days at start of Phase 1); ~13.3 GB Allocatable holds the full stack (~9.8 GB requests incl. TM RocksDB budget); spot ≈70% cheaper; preemption acceptable on a self-healing demo cluster |
+| D8 | 2026-07-17 | Terraform split by lifecycle: `platform/` (Redpanda topics/ACLs/subjects + GCS, persistent) vs `runtime/` (GKE + Helm, disposable); one-click `make infra-up`/`infra-down` on runtime only; Kafka Secret created from env vars by infra-up script | `terraform destroy` must never delete topics or checkpoints (spec: checkpoints survive teardown); split makes destroy-when-idle cost discipline mechanical, not careful |

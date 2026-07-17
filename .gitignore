@@ -20,3 +20,11 @@ kubeconfig*
 
 # Local runtime artifacts
 checkpoints/
+
+ # Terraform
+  .terraform/
+  *.tfstate
+  *.tfstate.*
+  *.tfvars
+  crash.log
+  crash.*.log
