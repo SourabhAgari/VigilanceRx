@@ -19,8 +19,10 @@ else
     gcloud storage buckets create "$BUCKET" \
         --project="$PROJECT_ID" \
         --location="$LOCATION" \
+        # permission will be granted at bucket level not at the object level (will be disabled)
         --uniform-bucket-level-access \
-        --public-access-prevention=enforced
+        # never allow this bucket to be accessed publicly even though admin grants allusers access
+        --public-access-prevention
 fi
 
 echo "Ensuring object versioning is enabled (state undo button)"
