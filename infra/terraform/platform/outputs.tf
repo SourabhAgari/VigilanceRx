@@ -5,7 +5,7 @@ output "checkpoint_bucket" {
 
 output "checkpoint_uri" {
   description = "checkpoint base uri as consumed by the flink job (spec : state and checkpointing)"
-  value = "gs://${google_storage_bucket.checkpoints.name}/tx-vigilance-ckpt"
+  value = "gs://${google_storage_bucket.checkpoints.name}/rx-vigilance-ckpt"
 }
 
 output "flink_gsa_email" {
