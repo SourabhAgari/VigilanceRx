@@ -23,7 +23,7 @@ resource "google_storage_bucket_iam_member" "ckpt_writer" {
 
 resource "google_service_account_iam_member" "flink_workload_identity" {
   // member represents the kubernetes service account
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[rxvigilance/flink]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[rx-vigilance/flink]"
   role               = "roles/iam.workloadIdentityUser" // some one is allowed to impersonate this GSA
   service_account_id = google_service_account.flink.name
 }
