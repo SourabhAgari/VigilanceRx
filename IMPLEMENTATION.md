@@ -126,9 +126,19 @@ Epic #17; child issues #18–#23.
       the FIRST WI-enabled cluster → first-ever apply order is runtime
       cluster before platform WI binding (one-time per project; document in
       #23 README)
-- [ ] #20: `platform/redpanda.tf`: all 7 topics, service user + ACLs,
+- [x] #20: `platform/redpanda.tf`: all 7 topics, service user + ACLs,
       schema-registry subjects with `FULL_TRANSITIVE` (mirror of Phase 0
       local bootstrap)
+      — done 2026-07-18: serverless cluster `rx-vigilance` (us-east-1,
+      id d9dhs6gi8skvgsajf9n0, D11) + resource group, 7 topics (ref topics
+      compacted, D12), user `rx-vigilance-flink` (scram-sha-256, password
+      write-only — not in state), 8 least-privilege ACLs, 3 subjects
+      FULL_TRANSITIVE; registry verified via curl as the flink user
+      (3 subjects listed). Provider bumped ~>1.0 → ~>2.1 (D13: v1.9.0
+      redpanda_schema broken vs serverless, provider issue #338); schemas
+      use cloud Bearer auth; deprecated `cluster_api_url` attr retained
+      knowingly (warnings accepted). rpk cloud-profile topic listing
+      deferred to phase exit-criteria check
 - [ ] #21: `runtime/helm.tf`: cert-manager, Flink Kubernetes Operator,
       kube-prometheus-stack releases (depends_on chain per CLAUDE.md §10)
 - [ ] #22: `k8s/namespace.yaml`, `k8s/flink/flink-serviceaccount.yaml`;
@@ -366,3 +376,6 @@ README; repo reproducible from clean clone + documented secrets
 | D8 | 2026-07-17 | Terraform split by lifecycle: `platform/` (Redpanda topics/ACLs/subjects + GCS, persistent) vs `runtime/` (GKE + Helm, disposable); one-click `make infra-up`/`infra-down` on runtime only; Kafka Secret created from env vars by infra-up script | `terraform destroy` must never delete topics or checkpoints (spec: checkpoints survive teardown); split makes destroy-when-idle cost discipline mechanical, not careful |
 | D9 | 2026-07-18 | Budget alert amount ₹25,000 (not the full ₹28,016 trial credit) + extra 20% threshold rule (D7 amendment) | Deliberate safety margin below the trial credit; 20%/50%/80%/100% thresholds give an earlier warning ladder |
 | D10 | 2026-07-18 | GKE cluster named `vigilance-rx-gke` (spec says `rx-vigilance-gke`) — accepted deviation; single-node pool kept fixed at 1 (no autoscaling to 2) | Name immutable post-create and user chose to keep it; spec left as-is, this row is the record. Autoscaling max=2 considered and rejected: a hard single node makes Capacity-vs-Allocatable sizing mistakes fail loudly (Pending pod) instead of silently doubling spend |
+| D11 | 2026-07-18 | Redpanda serverless cluster itself Terraform-managed in `platform/` (`rx-vigilance`, AWS `us-east-1`) — created, not clicked | GCP-backed serverless is beta-gated; cross-cloud latency irrelevant at 12–15 ev/s; cluster in platform stack = survives runtime destroys (D8), `allow_deletion=false` |
+| D12 | 2026-07-18 | `cleanup.policy=compact` on `ndc-drug-class-ref` + `alert-lead-time-ref` (cloud); backport to local bootstrap as separate issue | Broadcast state is rebuilt from the full topic on every job start; with delete-policy retention, ref records would age out and the chronic-class filter would silently discard events |
+| D13 | 2026-07-18 | Redpanda provider `~> 2.1` (from `~> 1.0`); `redpanda_schema` uses cloud Bearer auth (no username/password); deprecated `cluster_api_url` attribute kept in use | v1.9.0 `redpanda_schema` can't read serverless clusters (provider issue #338, fixed v2.0.0); `password_wo` unusable at refresh time per provider warning; deprecated attr still present in 2.1.x — accepted with warnings |

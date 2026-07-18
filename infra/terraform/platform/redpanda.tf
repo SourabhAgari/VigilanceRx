@@ -75,3 +75,23 @@ resource "redpanda_acl" "flink" {
   permission_type       = "ALLOW"
   cluster_api_url       = redpanda_serverless_cluster.main.cluster_api_url
 }
+
+locals {
+  # TopicNameStrategy: subject = <topic>-value. Mirror of Phase 0 local
+  # bootstrap; .avsc files in src/main/resources are the source of truth.
+  schemas = {
+    "rx-fill-events-value"  = "rx-fill-event.avsc"
+    "gap-risk-alerts-value" = "gap-risk-alert.avsc"
+    "lapsed-alerts-value"   = "lapsed-alert.avsc"
+  }
+}
+
+resource "redpanda_schema" "subjects" {
+  for_each = local.schemas
+
+  cluster_id    = redpanda_serverless_cluster.main.id
+  subject       = each.key
+  schema        = file("${path.module}/../../../src/main/resources/${each.value}")
+  schema_type   = "AVRO"
+  compatibility = "FULL_TRANSITIVE" # §7 invariant, enforced by the registry itself
+}

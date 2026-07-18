@@ -13,7 +13,7 @@ terraform {
     }
     redpanda = {
       source  = "redpanda-data/redpanda"
-      version = "~> 1.0"
+      version = "~> 2.1"
     }
   }
 }
