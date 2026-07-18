@@ -3,7 +3,7 @@ resource "google_billing_budget" "trial_guard" {
   display_name = "rx-vigilance-trial-guard"
 
   budget_filter {
-    projects = ["projects/${var.project_id}"]
+    projects = ["projects/${data.google_project.current.number}"]
   }
 
   amount {
@@ -25,4 +25,8 @@ resource "google_billing_budget" "trial_guard" {
   threshold_rules {
     threshold_percent = 1.0
   }
+}
+
+data "google_project" "current" {
+  project_id = var.project_id
 }
