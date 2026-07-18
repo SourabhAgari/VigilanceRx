@@ -14,3 +14,16 @@ variable "billing_account_id" {
   description = "Billing account the D7 budget alert attaches to (set in terraform.tfvars, never committed)"
   type        = string
 }
+
+variable "redpanda_serverless_region" {
+  description = "Serverless region(AWS backed; GCP serverless is beta gated). Confirm the exact string in console's create-cluster dropdown"
+  type = string
+  default = "us-east-1"
+}
+
+variable "redpanda_flink_password" {
+  description = "SASL password for the Flink Kafka user (env: TF_VAR_redpanda_flink_password; write-only, never in state)"
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}

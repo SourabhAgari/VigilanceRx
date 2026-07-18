@@ -114,9 +114,18 @@ Epic #17; child issues #18–#23.
       (double-run verified); `terraform init`+`validate` green in both stacks
       vs GCS backend (google v6.50.0, redpanda v1.9.0, helm ~>3.0 pinned via
       committed lock files); project vigilancerx-502702, us-central1
-- [ ] #19: `runtime/gke.tf`: zonal cluster `rx-vigilance-gke`, single-node
+- [x] #19: `runtime/gke.tf`: zonal cluster `vigilance-rx-gke` (D10), single-node
       e2-standard-4 spot pool (D7), Workload Identity; `platform/gcs.tf`:
-      checkpoint bucket + SA binding; GCP budget alert (D7)
+      checkpoint bucket + SA binding; GCP budget alert (D7/D9)
+      — done 2026-07-18: both stacks applied & verified — cluster RUNNING
+      (us-central1-a, 1× e2-standard-4 spot, 1.35.5-gke.1241004), bucket
+      `vigilancerx-502702-rx-vigilance-ckpt` exists, 5+2 resources in state
+      (`terraform state list`). Gotchas hit: billing-budget API needs
+      `user_project_override`+`billing_project` in the google provider (ADC
+      quota project); WI pool `<project>.svc.id.goog` is created lazily by
+      the FIRST WI-enabled cluster → first-ever apply order is runtime
+      cluster before platform WI binding (one-time per project; document in
+      #23 README)
 - [ ] #20: `platform/redpanda.tf`: all 7 topics, service user + ACLs,
       schema-registry subjects with `FULL_TRANSITIVE` (mirror of Phase 0
       local bootstrap)
@@ -355,3 +364,5 @@ README; repo reproducible from clean clone + documented secrets
 | D6 | 2026-07-16 | Local partitions: `rx-fill-events`=3, all other topics=1, r=1 | Multi-partition source reproduces idle-partition watermark behavior locally (§4 idleness invariant testable) |
 | D7 | 2026-07-17 | GKE runtime: single-node zonal pool, e2-standard-4 **spot**, + GCP budget alert | GCP free-trial budget (₹28,016 / 50 days at start of Phase 1); ~13.3 GB Allocatable holds the full stack (~9.8 GB requests incl. TM RocksDB budget); spot ≈70% cheaper; preemption acceptable on a self-healing demo cluster |
 | D8 | 2026-07-17 | Terraform split by lifecycle: `platform/` (Redpanda topics/ACLs/subjects + GCS, persistent) vs `runtime/` (GKE + Helm, disposable); one-click `make infra-up`/`infra-down` on runtime only; Kafka Secret created from env vars by infra-up script | `terraform destroy` must never delete topics or checkpoints (spec: checkpoints survive teardown); split makes destroy-when-idle cost discipline mechanical, not careful |
+| D9 | 2026-07-18 | Budget alert amount ₹25,000 (not the full ₹28,016 trial credit) + extra 20% threshold rule (D7 amendment) | Deliberate safety margin below the trial credit; 20%/50%/80%/100% thresholds give an earlier warning ladder |
+| D10 | 2026-07-18 | GKE cluster named `vigilance-rx-gke` (spec says `rx-vigilance-gke`) — accepted deviation; single-node pool kept fixed at 1 (no autoscaling to 2) | Name immutable post-create and user chose to keep it; spec left as-is, this row is the record. Autoscaling max=2 considered and rejected: a hard single node makes Capacity-vs-Allocatable sizing mistakes fail loudly (Pending pod) instead of silently doubling spend |
