@@ -18,7 +18,7 @@ resource "google_service_account" "flink" {
 resource "google_storage_bucket_iam_member" "ckpt_writer" {
   bucket = google_storage_bucket.checkpoints.name
   member = "serviceAccount:${google_service_account.flink.email}"
-  role   = "roles/storage.objectAdmin"
+  role   = "roles/storage.objectUser"
 }
 
 resource "google_service_account_iam_member" "flink_workload_identity" {
