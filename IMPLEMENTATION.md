@@ -139,8 +139,15 @@ Epic #17; child issues #18–#23.
       use cloud Bearer auth; deprecated `cluster_api_url` attr retained
       knowingly (warnings accepted). rpk cloud-profile topic listing
       deferred to phase exit-criteria check
-- [ ] #21: `runtime/helm.tf`: cert-manager, Flink Kubernetes Operator,
+- [x] #21: `runtime/helm.tf`: cert-manager, Flink Kubernetes Operator,
       kube-prometheus-stack releases (depends_on chain per CLAUDE.md §10)
+      — done 2026-07-19: helm provider wired to GKE via google_client_config
+      token (no kubeconfig/static creds); pinned cert-manager v1.21.0 →
+      flink-kubernetes-operator 1.15.0 (depends_on cert-manager, ns
+      flink-system) + kube-prometheus-stack 87.17.0 (ns monitoring, no
+      fake dep). Verified: all pods Running — cert-manager 3/3 pods,
+      operator 2/2 (webhook container up = cert chain works), full
+      monitoring set incl. prometheus-0 and grafana
 - [ ] #22: `k8s/namespace.yaml`, `k8s/flink/flink-serviceaccount.yaml`;
       Kafka credentials as Kubernetes Secret created from env vars by the
       infra-up script (never committed, never in Terraform state)

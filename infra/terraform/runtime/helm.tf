@@ -26,3 +26,15 @@ resource "helm_release" "flink_operator" {
   # webhook needs cert-manager ready to issue its TLS cert (§10 chain).
   depends_on = [helm_release.cert_manager]
 }
+
+resource "helm_release" "kube_prometheus_stack" {
+  name             = "kube-prometheus-stack"
+  repository       = "https://prometheus-community.github.io/helm-charts"
+  chart            = "kube-prometheus-stack"
+  version          =  "87.17.0"
+  namespace        = "monitoring"
+  create_namespace = true
+
+  # No depends_on: this chart self-manages its webhook certs and shares no
+  # real dependency with cert-manager or the Flink operator.
+}
