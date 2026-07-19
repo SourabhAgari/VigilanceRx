@@ -28,7 +28,7 @@ requires restoring it (one `terraform apply`).
 | Phase | Name | Env | Status |
 |---|---|---|---|
 | 0 | Repo scaffolding & local environment | local | ✅ done 2026-07-16 |
-| 1 | Infrastructure bootstrap (Terraform) | cloud | ◐ in progress (started 2026-07-17) |
+| 1 | Infrastructure bootstrap (Terraform) | cloud | ✅ done 2026-07-19 |
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
 | 3 | Domain model & interval logic | local | ☐ not started |
 | 4 | Config, serialization, watermarks | local | ☐ not started |
@@ -160,9 +160,27 @@ Epic #17; child issues #18–#23.
       via `kubectl describe` (keys+sizes only); procedure documented in
       `k8s/README.md` with placeholders; automation lands in #23 infra-up.
       GitOps/Argo CD proposal filed as #30 + D-open-10 (Phase 10 decision)
-- [ ] #23: `make infra-up` / `make infra-down` one-click wrappers (D8);
+- [x] #23: `make infra-up` / `make infra-down` one-click wrappers (D8);
       document destroy / re-`apply` idle-cost workflow in README;
       round-trip verification
+      — done 2026-07-19: Makefile targets (infra-up/-down/-verify; verify =
+      kubectl wait Ready ×3 ns + WI annotation + secret keys) + sharp-edge
+      docs in infra/terraform/README.md. Round-trip verified: destroy 5
+      resources → cluster list empty, bucket + 3 subjects survived →
+      `make infra-up` CLEAN SINGLE PASS (helm-provider §10 edge did NOT
+      fire on helm provider 3.x; targeted-apply fallback documented anyway)
+      → all pods Ready, secret recreated. rpk SASL topic list: 7 topics,
+      rx-fill-events p=3 — first Kafka-protocol auth test of flink user
+
+**Exit criteria — all verified 2026-07-19:**
+- ✅ Fresh apply from empty runtime state, no manual steps beyond documented
+  secret creation: `make infra-up` single pass (2026-07-19 round-trip)
+- ✅ Operator healthy + Prometheus/Grafana running: `kubectl wait` Ready in
+  flink-system (2/2) and monitoring via `make infra-verify`
+- ✅ rpk lists 7 topics (SASL as flink user); registry lists 3 subjects
+  (curl, basic auth)
+- ✅ destroy + re-apply round-trip verified once (this session; platform
+  stack untouched throughout)
 
 **Exit criteria**
 - Fresh `terraform apply` from empty state completes without manual steps
