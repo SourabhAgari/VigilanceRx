@@ -61,6 +61,19 @@ partitions_for() {
     esac
 }
 
+config_flags_for() {
+      case "$1" in
+          ndc-drug-class-ref|alert-lead-time-ref)
+              # D12: broadcast state is rebuilt from the full topic on every
+              # job start — records must never age out (mirrors redpanda.tf)
+              echo "-c cleanup.policy=compact"
+              ;;
+          *)
+              echo ""
+              ;;
+      esac
+  }
+
 ###############################################################################
 # Create topics if they do not already exist
 ###############################################################################
@@ -77,6 +90,7 @@ for topic in "${TOPICS[@]}"; do
             rpk topic create \
             "$topic" \
             -p "$(partitions_for "$topic")" \
+            $(config_flags_for "$topic") \
             -r 1
 
         echo "✔ Created topic: $topic"
