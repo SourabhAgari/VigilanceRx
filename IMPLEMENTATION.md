@@ -148,9 +148,18 @@ Epic #17; child issues #18–#23.
       fake dep). Verified: all pods Running — cert-manager 3/3 pods,
       operator 2/2 (webhook container up = cert chain works), full
       monitoring set incl. prometheus-0 and grafana
-- [ ] #22: `k8s/namespace.yaml`, `k8s/flink/flink-serviceaccount.yaml`;
+- [x] #22: `k8s/namespace.yaml`, `k8s/flink/flink-serviceaccount.yaml`;
       Kafka credentials as Kubernetes Secret created from env vars by the
       infra-up script (never committed, never in Terraform state)
+      — done 2026-07-19: namespace `rx-vigilance` Active; KSA `flink` with
+      WI annotation verified against live cluster (jsonpath readback =
+      `rx-vigilance-sa@...` — closes the [rx-vigilance/flink] loop from
+      #19; end-to-end token-exchange proof deferred to Phase 2 SmokeJob).
+      Secret `kafka-credentials` (keys `sasl-username`/`sasl-password` —
+      name-frozen for Phase 2) created manually from env vars, verified
+      via `kubectl describe` (keys+sizes only); procedure documented in
+      `k8s/README.md` with placeholders; automation lands in #23 infra-up.
+      GitOps/Argo CD proposal filed as #30 + D-open-10 (Phase 10 decision)
 - [ ] #23: `make infra-up` / `make infra-down` one-click wrappers (D8);
       document destroy / re-`apply` idle-cost workflow in README;
       round-trip verification
@@ -386,3 +395,4 @@ README; repo reproducible from clean clone + documented secrets
 | D11 | 2026-07-18 | Redpanda serverless cluster itself Terraform-managed in `platform/` (`rx-vigilance`, AWS `us-east-1`) — created, not clicked | GCP-backed serverless is beta-gated; cross-cloud latency irrelevant at 12–15 ev/s; cluster in platform stack = survives runtime destroys (D8), `allow_deletion=false` |
 | D12 | 2026-07-18 | `cleanup.policy=compact` on `ndc-drug-class-ref` + `alert-lead-time-ref` (cloud); backport to local bootstrap as separate issue | Broadcast state is rebuilt from the full topic on every job start; with delete-policy retention, ref records would age out and the chronic-class filter would silently discard events |
 | D13 | 2026-07-18 | Redpanda provider `~> 2.1` (from `~> 1.0`); `redpanda_schema` uses cloud Bearer auth (no username/password); deprecated `cluster_api_url` attribute kept in use | v1.9.0 `redpanda_schema` can't read serverless clusters (provider issue #338, fixed v2.0.0); `password_wo` unusable at refresh time per provider warning; deprecated attr still present in 2.1.x — accepted with warnings |
+| D-open-10 | — | **Proposed** (2026-07-19): Phase 10 deploy path via Argo CD GitOps (CI commits manifest, Argo reconciles) instead of spec's direct `deploy.yml` patching | User wants enterprise-pattern learning; decide at Phase 10 epic creation — capacity (D7 single node) and slim-install vs Flux to be resolved in that plan. Issue filed |
