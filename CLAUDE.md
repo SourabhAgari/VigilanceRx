@@ -203,11 +203,22 @@ docker-compose up -d                        # local Redpanda (broker + registry)
 ./scripts/bootstrap-local-topics.sh         # topics + schemas (mirrors redpanda.tf)
 mvn clean verify                            # build + all tests (the gate)
 mvn test -Dtest=IntervalMergerTest          # fast pure-logic loop
-mvn exec:java -Dexec.mainClass="com.healthcare.rxvigilance.AdherenceJob" \
-  -Dexec.args="--kafka.brokers=localhost:9092 \
-               --schema.registry.url=http://localhost:8081 \
-               --checkpoint.dir=file:///tmp/rx-vigilance-checkpoints"
 ```
+
+Local job runs: use the IDE, not `mvn exec:java` — Flink's local mini-cluster
+spawns threads that don't see `exec:java`'s bolted-on classloader (confirmed
+during #38: `ClassNotFoundException` on core Flink classes even with all
+dependencies present). Run the job class directly from IntelliJ with:
+
+- Program arguments (space-separated — `ParameterTool` does not parse
+  `--key=value`, only `--key value`):
+  ```
+  --kafka.brokers localhost:9092 --schema.registry.url http://localhost:8081 --checkpoint.dir file:///tmp/rx-vigilance-checkpoints
+  ```
+- "Add dependencies with 'provided' scope to classpath" enabled in the run
+  configuration — Flink's own classes (`flink-streaming-java`, etc.) are
+  `provided` scope (supplied by the cluster in real deployments) and are
+  excluded from the run classpath by default otherwise.
 
 Run `mvn clean verify` before declaring any task complete.
 
