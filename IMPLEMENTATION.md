@@ -197,6 +197,9 @@ Epic #17; child issues #18–#23.
 **Goal**: prove the entire glue path — SASL_SSL, schema registry, GCS
 checkpoints, operator deployment — before any pipeline logic exists.
 
+Epic #37; child issues #38–#42 (produce-and-observe + checkpoint
+verification tasks below are combined in #41).
+
 - [ ] Minimal `SmokeJob`: Kafka source (`rx-fill-events`, Avro via registry)
       → log/print sink, checkpointing to GCS
 - [ ] Minimal Dockerfile (multi-stage per spec) + manual image push to GHCR
