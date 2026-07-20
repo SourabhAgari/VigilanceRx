@@ -197,8 +197,24 @@ Epic #17; child issues #18–#23.
 **Goal**: prove the entire glue path — SASL_SSL, schema registry, GCS
 checkpoints, operator deployment — before any pipeline logic exists.
 
-- [ ] Minimal `SmokeJob`: Kafka source (`rx-fill-events`, Avro via registry)
+Epic #37; child issues #38–#42 (produce-and-observe + checkpoint
+verification tasks below are combined in #41).
+
+- [x] #38 Minimal `SmokeJob`: Kafka source (`rx-fill-events`, Avro via registry)
       → log/print sink, checkpointing to GCS
+      — done 2026-07-20: KafkaSource (GenericRecord, ConfluentRegistryAvroDeserializationSchema,
+      earliest offsets, noWatermarks — job has no event-time logic) → LoggingSink
+      (redacted INFO, full record DEBUG per §7/§9). Verified locally against
+      docker-compose Redpanda: hand-produced Avro event consumed and logged
+      (`type=FILL, ndc=00093-7424-56, fillDate=20654`, no memberId at INFO);
+      checkpoints completing continuously (chk-1..chk-8 across runs,
+      `_metadata` present). pom: added `flink-connector-base` (provided) —
+      non-transitive dependency gap, invisible until a local run. CLAUDE.md
+      §6 corrected: `mvn exec:java` does not work for local Flink runs
+      (classloader mismatch between the exec plugin and Flink's mini-cluster
+      threads) — replaced with IDE run instructions + the two argument
+      gotchas (`--key value` not `--key=value`; provided-scope classpath
+      checkbox)
 - [ ] Minimal Dockerfile (multi-stage per spec) + manual image push to GHCR
 - [ ] `k8s/flink/flink-deployment.yaml`: FlinkDeployment CR running SmokeJob
 - [ ] Produce a hand-crafted Avro event to cloud `rx-fill-events`; observe it

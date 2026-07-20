@@ -22,6 +22,7 @@
         <sonar.projectKey>SourabhAgari_VigilanceRx</sonar.projectKey>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <sonar.sources>pom.xml,src/main,infra,k8s</sonar.sources>
+        <sonar.coverage.exclusions>src/main/java/com/healthcare/rxvigilance/SmokeJob.java</sonar.coverage.exclusions>
     </properties>
 
     <dependencies>
@@ -49,6 +50,12 @@
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-kafka</artifactId>
             <version>${flink.kafka.connector.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-base</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.avro</groupId>
