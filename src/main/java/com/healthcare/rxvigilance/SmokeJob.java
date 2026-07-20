@@ -1,10 +1,23 @@
 package com.healthcare.rxvigilance;
 
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.formats.avro.registry.confluent.ConfluentRegistryAvroDeserializationSchema;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.InputStream;
 
 public class SmokeJob {
     public static void main(String[] args) throws Exception{
+        Schema readerSchema;
         ParameterTool params = ParameterTool.fromArgs(args);
 
         String brokers = params.getRequired("kafka.brokers");
@@ -16,6 +29,38 @@ public class SmokeJob {
         env.enableCheckpointing(30_000);
         env.getCheckpointConfig().setCheckpointStorage(checkpointDir);
 
+        // Step 2 : Kafka Config
+        try (InputStream avsc = SmokeJob.class.getResourceAsStream("/rx-fill-event.avsc")) {
+            readerSchema = new Schema.Parser().parse(avsc);
+        }
+
+        KafkaSource<GenericRecord> source = KafkaSource
+                .<GenericRecord>builder()
+                .setBootstrapServers(brokers)
+                .setTopics(params.get("kafka.topic","rx-fill-events"))
+                .setGroupId(params.get("kafka.group.id","rx-vigilance-smoke"))
+                .setStartingOffsets(OffsetsInitializer.earliest())
+                .setValueOnlyDeserializer(
+                        ConfluentRegistryAvroDeserializationSchema.forGeneric(readerSchema,registryUrl)
+                )
+                        .build();
+
+        DataStream<GenericRecord> events = env.fromSource(source,
+                WatermarkStrategy.noWatermarks(),"rx-fill-events-source");
+        events.addSink(new LoggingSink())
+                        .name("smoke-logging-sink")
+                        .uid("smoke-logging-sink");
         env.execute("smoke-job");
+    }
+
+    private static  final class LoggingSink implements SinkFunction<GenericRecord> {
+        private static final Logger LOG = LoggerFactory.getLogger(LoggingSink.class);
+
+        @Override
+        public void invoke(GenericRecord value, Context context) throws Exception {
+            LOG.info("Smoke event recieved: type={}, ndc={}, fillDate={}",
+                    value.get("eventType"), value.get("ndcCode"), value.get("fillDate"));
+            LOG.debug("smoke full record: {}", value);
+        }
     }
 }
