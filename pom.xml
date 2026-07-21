@@ -22,7 +22,7 @@
         <sonar.organization>sourabhagari</sonar.organization>
         <sonar.projectKey>SourabhAgari_VigilanceRx</sonar.projectKey>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
-        <sonar.sources>pom.xml,src/main,infra,k8s</sonar.sources>
+        <sonar.sources>pom.xml,src/main,infra,k8s,Dockerfile</sonar.sources>
         <sonar.coverage.exclusions>src/main/java/com/healthcare/rxvigilance/SmokeJob.java</sonar.coverage.exclusions>
     </properties>
 
