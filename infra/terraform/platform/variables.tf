@@ -27,3 +27,10 @@ variable "redpanda_flink_password" {
   sensitive   = true
   ephemeral   = true
 }
+
+variable "redpanda_test_producer_password" {
+  description = "SASL password for the test-only producer identity (manual smoke-test event injection, never used by the deployed job)"
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}

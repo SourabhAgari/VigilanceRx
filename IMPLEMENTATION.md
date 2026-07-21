@@ -254,9 +254,35 @@ verification tasks below are combined in #41).
       gotchas written into `k8s/README.md`. Deployment left running for
       #41 (produce-and-observe reuses it; GCS checkpoint verification is
       effectively already evidenced above)
-- [ ] Produce a hand-crafted Avro event to cloud `rx-fill-events`; observe it
+- [x] #41 Produce a hand-crafted Avro event to cloud `rx-fill-events`; observe it
       logged by the job on GKE
-- [ ] Verify a checkpoint object appears in the GCS bucket
+      — done 2026-07-21: two events produced via `rpk` as the new
+      `rx-vigilance-test-producer` identity, both logged
+      (`type=FILL, ndc=00093-7424-56, fillDate=20654`, no memberId at INFO).
+      Discovered a real gap along the way: `ConfluentRegistryAvroDeserializationSchema`
+      needs its own HTTP basic-auth config for the schema registry —
+      completely separate from the KafkaSource's SASL properties (two
+      different protocols/services, same underlying credentials). Fixed in
+      `SmokeJob` via a `registryConfigs` map
+      (`basic.auth.credentials.source=USER_INFO` +
+      `schema.registry.basic.auth.user.info`), same env-var-gated pattern as
+      the Kafka SASL branch. Also: produce attempt with the job's own
+      `rx-vigilance-flink` identity correctly failed
+      `TOPIC_AUTHORIZATION_FAILED` (least-privilege ACLs from #20 working
+      as designed — that identity has no WRITE on its own source topic) →
+      added `rx-vigilance-test-producer` (Terraform: new `redpanda_user` +
+      3 WRITE ACLs on rx-fill-events/ndc-drug-class-ref/alert-lead-time-ref)
+      as a dedicated test-injection identity, never used by the job itself.
+      Applying that Terraform change also surfaced and cleanly resolved
+      long-pending drift: the #33 Sonar fix (bucket IAM objectAdmin →
+      objectUser) had been code-approved but never actually applied —
+      applied now, live job unaffected (checkpoints continued normally
+      through the change)
+- [x] #41 Verify a checkpoint object appears in the GCS bucket
+      — done 2026-07-21: already evidenced continuously since #40 and
+      reconfirmed here — checkpoints 4–5 completed cleanly post-restart
+      (`gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-ckpt/...`),
+      confirming the objectUser role change didn't break GCS access
 - [ ] Capture all connection config into `application-gke.properties` +
       README notes (registry URLs, truststore approach, operator quirks)
 
@@ -468,3 +494,4 @@ README; repo reproducible from clean clone + documented secrets
 | D13 | 2026-07-18 | Redpanda provider `~> 2.1` (from `~> 1.0`); `redpanda_schema` uses cloud Bearer auth (no username/password); deprecated `cluster_api_url` attribute kept in use | v1.9.0 `redpanda_schema` can't read serverless clusters (provider issue #338, fixed v2.0.0); `password_wo` unusable at refresh time per provider warning; deprecated attr still present in 2.1.x — accepted with warnings |
 | D-open-10 | — | **Proposed** (2026-07-19): Phase 10 deploy path via Argo CD GitOps (CI commits manifest, Argo reconciles) instead of spec's direct `deploy.yml` patching | User wants enterprise-pattern learning; decide at Phase 10 epic creation — capacity (D7 single node) and slim-install vs Flux to be resolved in that plan. Issue filed |
 | D14 | 2026-07-20 | Sonar `sonar.coverage.exclusions` for entry-point/wiring job classes (`SmokeJob.java` now; add `AdherenceJob.java` explicitly in Phase 9 — no glob) | No unit-testable logic (builder-chain wiring only); real verification is the manual/integration run (§5). Domain/coverage/operator logic (Phase 3+) gets no such exclusion — §5's exhaustive-testing rule is unchanged there |
+| D15 | 2026-07-21 | New Redpanda identity `rx-vigilance-test-producer` (WRITE-only on rx-fill-events + the two broadcast ref topics), dedicated to manual/test event injection, never used by the deployed job | `rx-vigilance-flink`'s READ-only ACL on its own source topic (#20) is correct least-privilege and must stay that way; smoke-testing needs *something* to act as the upstream producer without widening the job's own identity |
