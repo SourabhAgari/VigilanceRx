@@ -1,0 +1,60 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: rx-vigilance-smoke
+  namespace: rx-vigilance
+spec:
+  image: ghcr.io/sourabhagari/rx-vigilance:smoke
+  imagePullPolicy: Always
+  flinkVersion: v1_18
+  serviceAccount: flink
+
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "1"
+
+  jobManager:
+    resource:
+      memory: "2048m"
+      cpu: 1
+    podTemplate: &podTemplate
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: pod-template
+      spec:
+        imagePullSecrets:
+          - name: ghcr-pull
+        containers:
+          - name: flink-main-container
+            env:
+              - name: ENABLE_BUILT_IN_PLUGINS
+                value: flink-gs-fs-hadoop-1.18.1.jar
+              - name: KAFKA_SASL_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: kafka-credentials
+                    key: sasl-username
+              - name: KAFKA_SASL_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: kafka-credentials
+                    key: sasl-password
+
+  taskManager:
+    resource:
+      memory: "2048m"
+      cpu: 1
+    podTemplate: *podTemplate
+
+  job:
+    jarURI: local:///opt/flink/usrlib/rx-vigilance.jar
+    entryClass: com.healthcare.rxvigilance.SmokeJob
+    parallelism: 1
+    upgradeMode: stateless
+    args:
+      - "--kafka.brokers"
+      - "d9dhs6gi8skvgsajf9n0.any.us-east-1.mpx.prd.cloud.redpanda.com:9092"
+      - "--schema.registry.url"
+      - "https://d9dhs6gi8skvgsajf9n0.registry.us-east-1.mpx.prd.cloud.redpanda.com"
+      - "--checkpoint.dir"
+      - "gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-ckpt"

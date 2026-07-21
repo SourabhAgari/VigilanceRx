@@ -5,6 +5,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.KafkaSourceBuilder;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.formats.avro.registry.confluent.ConfluentRegistryAvroDeserializationSchema;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -16,13 +17,16 @@ import org.slf4j.LoggerFactory;
 import java.io.InputStream;
 
 public class SmokeJob {
-    public static void main(String[] args) throws Exception{
+    public static void main(String[] args) throws Exception {
         Schema readerSchema;
         ParameterTool params = ParameterTool.fromArgs(args);
 
         String brokers = params.getRequired("kafka.brokers");
         String registryUrl = params.getRequired("schema.registry.url");
         String checkpointDir = params.getRequired("checkpoint.dir");
+
+        String saslUsername = System.getenv("KAFKA_SASL_USERNAME");
+        String saslPassword = System.getenv("KAFKA_SASL_PASSWORD");
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
@@ -34,26 +38,38 @@ public class SmokeJob {
             readerSchema = new Schema.Parser().parse(avsc);
         }
 
-        KafkaSource<GenericRecord> source = KafkaSource
+        KafkaSourceBuilder<GenericRecord> kafkaSourceBuilder = KafkaSource
                 .<GenericRecord>builder()
                 .setBootstrapServers(brokers)
-                .setTopics(params.get("kafka.topic","rx-fill-events"))
-                .setGroupId(params.get("kafka.group.id","rx-vigilance-smoke"))
-                .setStartingOffsets(OffsetsInitializer.earliest())
-                .setValueOnlyDeserializer(
-                        ConfluentRegistryAvroDeserializationSchema.forGeneric(readerSchema,registryUrl)
-                )
-                        .build();
+                .setTopics(params.get("kafka.topic", "rx-fill-events"))
+                .setGroupId(params.get("kafka.group.id", "rx-vigilance-smoke"))
+                .setStartingOffsets(OffsetsInitializer.earliest());
 
-        DataStream<GenericRecord> events = env.fromSource(source,
-                WatermarkStrategy.noWatermarks(),"rx-fill-events-source");
+        if (saslUsername != null && saslPassword != null) {
+            kafkaSourceBuilder
+                    .setProperty("security.protocol", "SASL_SSL")
+                    .setProperty("sasl.mechanism", "SCRAM-SHA-256")
+                    .setProperty("sasl.jaas.config",
+                            "org.apache.kafka.common.security.scram.ScramLoginModule required "
+                                    + "username=\"" + saslUsername + "\" password=\"" + saslPassword + "\";");
+        }
+
+        KafkaSource<GenericRecord> source = kafkaSourceBuilder
+                .setValueOnlyDeserializer(
+                        ConfluentRegistryAvroDeserializationSchema.forGeneric(readerSchema, registryUrl))
+                .build();
+
+        DataStream<GenericRecord> events = env.fromSource(
+                        source, WatermarkStrategy.noWatermarks(), "rx-fill-events-source")
+                .uid("rx-fill-events-source");
+
         events.addSink(new LoggingSink())
-                        .name("smoke-logging-sink")
-                        .uid("smoke-logging-sink");
+                .name("smoke-logging-sink")
+                .uid("smoke-logging-sink");
         env.execute("smoke-job");
     }
 
-    private static  final class LoggingSink implements SinkFunction<GenericRecord> {
+    private static final class LoggingSink implements SinkFunction<GenericRecord> {
         private static final Logger LOG = LoggerFactory.getLogger(LoggingSink.class);
 
         @Override

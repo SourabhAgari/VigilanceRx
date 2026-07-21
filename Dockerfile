@@ -1,4 +1,4 @@
-FROM maven:3.9-eclipse-temurin AS BUILDER
+FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /build
 COPY pom.xml .
@@ -15,6 +15,6 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # ------ runtime stage -----------#
-FROM flink:1.18
+FROM flink:1.18-java17
 
-COPY --from=BUILDER /build/target/rx-vigilance-1.0.0-SNAPSHOT.jar /opt/flink/usrlib/rx-vigilance.jar
+COPY --from=builder /build/target/rx-vigilance-1.0.0-SNAPSHOT.jar /opt/flink/usrlib/rx-vigilance.jar

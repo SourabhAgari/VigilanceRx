@@ -230,7 +230,30 @@ verification tasks below are combined in #41).
       context arg — never exercised before this task); Dockerfile added
       to `sonar.sources` (deferred from #33), no new findings. Follow-up
       for #40: private package needs a k8s imagePullSecret
-- [ ] `k8s/flink/flink-deployment.yaml`: FlinkDeployment CR running SmokeJob
+- [x] #40 `k8s/flink/flink-deployment.yaml`: FlinkDeployment CR running SmokeJob
+      — done 2026-07-21: verified `kubectl get flinkdeployment` → JOB STATUS
+      RUNNING, LIFECYCLE STATE STABLE; JM + TM pods 1/1 Running; checkpoints
+      1–7 completing every ~30s to the real GCS bucket (`Successfully
+      repaired gs://vigilancerx-502702-rx-vigilance-ckpt/...` in JM log) —
+      Workload Identity + GCS plugin proven end-to-end. Also added
+      `k8s/flink/flink-rbac.yaml` (Role+RoleBinding — not originally scoped
+      in #22, discovered here: Flink's native K8s execution mode needs its
+      own K8s API RBAC, separate from Workload Identity's GCP-only scope).
+      Chain of fixes along the way, each isolated and verified: SASL
+      properties added to SmokeJob's KafkaSource (env-var gated, #38 had no
+      cloud auth path); GHCR image was arm64-only (Apple Silicon build host
+      vs GKE's amd64 nodes) → `--platform linux/amd64`; `flink:1.18` base
+      image is JDK 11, our bytecode is Java 17 → switched to
+      `flink:1.18-java17`; `kafka-clients` version conflict
+      (3.4.0 vs Confluent's transitive 7.2.2-ccs) excluded via pom; two RBAC
+      gaps (core `pods`/`configmaps`/`services`/`endpoints`, then
+      `apps/deployments` for owner-reference lookups); shared top-level
+      `podTemplate` corrupted the TaskManager's `kind` field on the
+      operator's merge path — moved to per-role `podTemplate` under
+      `jobManager`/`taskManager` (YAML anchor to avoid duplication). All
+      gotchas written into `k8s/README.md`. Deployment left running for
+      #41 (produce-and-observe reuses it; GCS checkpoint verification is
+      effectively already evidenced above)
 - [ ] Produce a hand-crafted Avro event to cloud `rx-fill-events`; observe it
       logged by the job on GKE
 - [ ] Verify a checkpoint object appears in the GCS bucket
