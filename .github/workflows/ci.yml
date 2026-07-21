@@ -36,4 +36,4 @@ jobs:
 
       - name: Docker build (no push)
         if: hashFiles('Dockerfile') != ''    # activates when Phase 2 adds it
-        run: docker build -t rx-vigilance:ci
+        run: docker build -t rx-vigilance:ci .
