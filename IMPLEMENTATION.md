@@ -215,7 +215,21 @@ verification tasks below are combined in #41).
       threads) — replaced with IDE run instructions + the two argument
       gotchas (`--key value` not `--key=value`; provided-scope classpath
       checkbox)
-- [ ] Minimal Dockerfile (multi-stage per spec) + manual image push to GHCR
+- [x] #39 Minimal Dockerfile (multi-stage per spec) + manual image push to GHCR
+      — done 2026-07-21: maven-shade-plugin added (fat jar — bundles
+      compile-scope Kafka connector/Avro/registry client; provided-scope
+      Flink core correctly excluded by shade's default artifact set,
+      verified via `jar tf` grep before/after). Dockerfile: maven builder
+      stage → `flink:1.18` runtime, jar renamed to fixed
+      `/opt/flink/usrlib/rx-vigilance.jar` (version-independent for #40's
+      manifest). Verified: local build, `flink --version` clean in the
+      built image. Pushed `ghcr.io/sourabhagari/rx-vigilance:smoke`
+      manually — package private, linked to this repo (unlocks
+      GITHUB_TOKEN push/pull for Phase 10, no PAT secret needed). Fixed a
+      pre-existing bug in `ci.yml`'s docker-build step (missing build
+      context arg — never exercised before this task); Dockerfile added
+      to `sonar.sources` (deferred from #33), no new findings. Follow-up
+      for #40: private package needs a k8s imagePullSecret
 - [ ] `k8s/flink/flink-deployment.yaml`: FlinkDeployment CR running SmokeJob
 - [ ] Produce a hand-crafted Avro event to cloud `rx-fill-events`; observe it
       logged by the job on GKE
