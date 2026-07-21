@@ -95,3 +95,35 @@ resource "redpanda_schema" "subjects" {
   schema_type   = "AVRO"
   compatibility = "FULL_TRANSITIVE" # §7 invariant, enforced by the registry itself
 }
+
+resource "redpanda_user" "test_producer" {
+  name                = "rx-vigilance-test-producer"
+  password_wo         = var.redpanda_test_producer_password
+  password_wo_version = 1
+  mechanism           = "scram-sha-256"
+  cluster_api_url     = redpanda_serverless_cluster.main.dataplane_api.url
+}
+
+locals {
+  # Test-only producer simulating the upstream system that writes fill
+  # events + reference data. Kept separate from rx-vigilance-flink so the
+  # deployed job's identity never has WRITE on its own source topics.
+  test_producer_acls = {
+    "write-rx-fill-events"      = { type = "TOPIC", name = "rx-fill-events", op = "WRITE", pattern = "LITERAL" }
+    "write-ndc-drug-class-ref"  = { type = "TOPIC", name = "ndc-drug-class-ref", op = "WRITE", pattern = "LITERAL" }
+    "write-alert-lead-time-ref" = { type = "TOPIC", name = "alert-lead-time-ref", op = "WRITE", pattern = "LITERAL" }
+  }
+}
+
+resource "redpanda_acl" "test_producer" {
+  for_each = local.test_producer_acls
+
+  resource_type         = each.value.type
+  resource_name         = each.value.name
+  resource_pattern_type = each.value.pattern
+  principal             = "User:${redpanda_user.test_producer.name}"
+  host                  = "*"
+  operation             = each.value.op
+  permission_type       = "ALLOW"
+  cluster_api_url       = redpanda_serverless_cluster.main.dataplane_api.url
+}

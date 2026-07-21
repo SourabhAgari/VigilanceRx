@@ -15,6 +15,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 public class SmokeJob {
     public static void main(String[] args) throws Exception {
@@ -38,6 +40,17 @@ public class SmokeJob {
             readerSchema = new Schema.Parser().parse(avsc);
         }
 
+        ConfluentRegistryAvroDeserializationSchema<GenericRecord> avroDeserializer;
+        if (saslUsername != null && saslPassword != null) {
+            Map<String, Object> registryConfigs = new HashMap<>();
+            registryConfigs.put("basic.auth.credentials.source", "USER_INFO");
+            registryConfigs.put("schema.registry.basic.auth.user.info", saslUsername + ":" + saslPassword);
+            avroDeserializer = ConfluentRegistryAvroDeserializationSchema.forGeneric(
+                    readerSchema, registryUrl, registryConfigs);
+        } else {
+            avroDeserializer = ConfluentRegistryAvroDeserializationSchema.forGeneric(readerSchema, registryUrl);
+        }
+
         KafkaSourceBuilder<GenericRecord> kafkaSourceBuilder = KafkaSource
                 .<GenericRecord>builder()
                 .setBootstrapServers(brokers)
@@ -55,8 +68,7 @@ public class SmokeJob {
         }
 
         KafkaSource<GenericRecord> source = kafkaSourceBuilder
-                .setValueOnlyDeserializer(
-                        ConfluentRegistryAvroDeserializationSchema.forGeneric(readerSchema, registryUrl))
+                .setValueOnlyDeserializer(avroDeserializer)
                 .build();
 
         DataStream<GenericRecord> events = env.fromSource(
