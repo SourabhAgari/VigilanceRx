@@ -283,13 +283,30 @@ verification tasks below are combined in #41).
       reconfirmed here — checkpoints 4–5 completed cleanly post-restart
       (`gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-ckpt/...`),
       confirming the objectUser role change didn't break GCS access
-- [ ] Capture all connection config into `application-gke.properties` +
+- [x] #42 Capture all connection config into `application-gke.properties` +
       README notes (registry URLs, truststore approach, operator quirks)
+      — done 2026-07-21: `src/main/resources/application-gke.properties`
+      captures non-secret connection facts (brokers, SASL mechanism,
+      registry URL + basic-auth mode, checkpoint dir) — credentials
+      deliberately excluded, sourced from the K8s Secret at runtime instead
+      (§9). Not yet consumed by code (`config/JobConfig.java` is Phase 4);
+      this is the verified-working reference Phase 4/10 will load via
+      `--config.file`. `k8s/README.md` "FlinkDeployment gotchas" section
+      consolidates every discovery from #40/#41 (arch/JDK mismatch, K8s
+      RBAC vs Workload Identity, shared-podTemplate merge bug, Kafka vs
+      registry auth split, no truststore needed, test-producer identity) —
+      the #40 version of this section had been drafted but never actually
+      committed; folded in here so nothing was lost.
 
-**Exit criteria**
-- SmokeJob runs on GKE, consumes a cloud event end-to-end, checkpoints to GCS
-- Everything needed to reproduce this is in git (minus secrets)
-- `terraform destroy` cluster afterward (cost discipline) — recorded here
+**Exit criteria — all verified 2026-07-21:**
+- ✅ SmokeJob runs on GKE, consumes a cloud event end-to-end, checkpoints
+  to GCS — #40/#41 (FlinkDeployment RUNNING/STABLE, two events logged,
+  checkpoints continuous)
+- ✅ Everything needed to reproduce this is in git (minus secrets) —
+  Dockerfile, k8s manifests, Terraform, application-gke.properties,
+  README docs; only the SASL/registry passwords live outside git (§9)
+- [ ] `terraform destroy` cluster afterward (cost discipline) — pending,
+      run once this issue's PR merges and the epic closes
 
 ---
 
