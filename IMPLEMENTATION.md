@@ -314,6 +314,8 @@ verification tasks below are combined in #41).
 
 **Goal**: the riskiest pure logic, exhaustively tested before any Flink code.
 
+Epic #52; child issues #53–#55.
+
 - [ ] `domain/`: `RxFillEvent`, `GapRiskAlert`, `LapsedAlert`, `PdcSnapshot`,
       `AdherenceState`, `CoverageInterval`, `DrugClassRef`, enums —
       records, zero Flink imports
