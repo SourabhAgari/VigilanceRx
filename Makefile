@@ -41,6 +41,7 @@ infra-up: check-env
 	$$(terraform -chdir=$(TF_RUNTIME) output -raw kubeconfig_command)
 	kubectl apply -f k8s/namespace.yaml
 	kubectl apply -f k8s/flink/flink-serviceaccount.yaml
+	kubectl apply -f k8s/flink/flink-rbac.yaml
 	kubectl create secret generic kafka-credentials \
 		--namespace rx-vigilance \
         --from-literal=sasl-username=rx-vigilance-flink \

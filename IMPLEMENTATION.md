@@ -314,9 +314,19 @@ verification tasks below are combined in #41).
 
 **Goal**: the riskiest pure logic, exhaustively tested before any Flink code.
 
-- [ ] `domain/`: `RxFillEvent`, `GapRiskAlert`, `LapsedAlert`, `PdcSnapshot`,
+Epic #52; child issues #53–#55.
+
+- [x] #53 `domain/`: `RxFillEvent`, `GapRiskAlert`, `LapsedAlert`, `PdcSnapshot`,
       `AdherenceState`, `CoverageInterval`, `DrugClassRef`, enums —
       records, zero Flink imports
+      — done 2026-07-22: all 8 types as records/enums; `mvn clean compile`
+      green; grep-verified zero `org.apache.flink.*` imports under
+      `domain/`. Two invariant guards added at construction:
+      `CoverageInterval` rejects `start.isAfter(end)`; `AdherenceState`
+      defensively copies `activeCoverageIntervals` via `List.copyOf` (record
+      immutability only protects the field reference, not a mutable list
+      handed in). `PdcSnapshot` was spec-underspecified (topic description
+      only, no field list) — resolved per D16 below.
 - [ ] `coverage/IntervalMerger`: pure functions — `merge(fill)`,
       `unwind(originalClaimId)`, `recompute()` returning
       `(currentSupplyEndDate, totalDaysCovered)`
@@ -512,3 +522,4 @@ README; repo reproducible from clean clone + documented secrets
 | D-open-10 | — | **Proposed** (2026-07-19): Phase 10 deploy path via Argo CD GitOps (CI commits manifest, Argo reconciles) instead of spec's direct `deploy.yml` patching | User wants enterprise-pattern learning; decide at Phase 10 epic creation — capacity (D7 single node) and slim-install vs Flux to be resolved in that plan. Issue filed |
 | D14 | 2026-07-20 | Sonar `sonar.coverage.exclusions` for entry-point/wiring job classes (`SmokeJob.java` now; add `AdherenceJob.java` explicitly in Phase 9 — no glob) | No unit-testable logic (builder-chain wiring only); real verification is the manual/integration run (§5). Domain/coverage/operator logic (Phase 3+) gets no such exclusion — §5's exhaustive-testing rule is unchanged there |
 | D15 | 2026-07-21 | New Redpanda identity `rx-vigilance-test-producer` (WRITE-only on rx-fill-events + the two broadcast ref topics), dedicated to manual/test event injection, never used by the deployed job | `rx-vigilance-flink`'s READ-only ACL on its own source topic (#20) is correct least-privilege and must stay that way; smoke-testing needs *something* to act as the upstream producer without widening the job's own identity |
+| D16 | 2026-07-22 | `PdcSnapshot` shape resolved: `memberId`, `drugClass`, `totalDaysCovered`, `currentSupplyEndDate`, `emittedAt` (long) | Spec named the sink and its purpose ("coverage-day facts and running numerator") but never gave a field list; shape derived from the matching language used for `AdherenceState.totalDaysCovered` + the other two alerts' `emittedAt` pattern; confirmed with user before writing |

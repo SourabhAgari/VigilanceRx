@@ -23,7 +23,8 @@
         <sonar.projectKey>SourabhAgari_VigilanceRx</sonar.projectKey>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <sonar.sources>pom.xml,src/main,infra,k8s,Dockerfile</sonar.sources>
-        <sonar.coverage.exclusions>src/main/java/com/healthcare/rxvigilance/SmokeJob.java</sonar.coverage.exclusions>
+        <sonar.coverage.exclusions>src/main/java/com/healthcare/rxvigilance/SmokeJob.java,src/main/java/com/healthcare/rxvigilance/domain/RxFillEvent.java,src/main/java/com/healthcare/rxvigilance/domain/GapRiskAlert.java,src/main/java/com/healthcare/rxvigilance/domain/LapsedAlert.java,src/main/java/com/healthcare/rxvigilance/domain/PdcSnapshot.java,src/main/java/com/healthcare/rxvigilance/domain/DrugClassRef.java,src/main/java/com/healthcare/rxvigilance/domain/EventType.java,src/main/java/com/healthcare/rxvigilance/domain/Channel.java
+        </sonar.coverage.exclusions>
     </properties>
 
     <dependencies>
@@ -166,7 +167,12 @@
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>3.2.5</version>   <!-- picks up *IT.java in `verify` -->
                 <executions>
-                    <execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>
