@@ -326,7 +326,11 @@ Epic #52; child issues #53–#55.
       defensively copies `activeCoverageIntervals` via `List.copyOf` (record
       immutability only protects the field reference, not a mutable list
       handed in). `PdcSnapshot` was spec-underspecified (topic description
-      only, no field list) — resolved per D16 below.
+      only, no field list) — resolved per D16 below. `CoverageIntervalTest`
+      + `AdherenceStateTest` added to cover the two invariant guards (100%
+      instructions/branches on both classes per JaCoCo); Sonar coverage gate
+      extended per D17 for the 7 zero-logic records. Sonar quality gate
+      green at 100% coverage on new code.
 - [ ] `coverage/IntervalMerger`: pure functions — `merge(fill)`,
       `unwind(originalClaimId)`, `recompute()` returning
       `(currentSupplyEndDate, totalDaysCovered)`
@@ -523,3 +527,4 @@ README; repo reproducible from clean clone + documented secrets
 | D14 | 2026-07-20 | Sonar `sonar.coverage.exclusions` for entry-point/wiring job classes (`SmokeJob.java` now; add `AdherenceJob.java` explicitly in Phase 9 — no glob) | No unit-testable logic (builder-chain wiring only); real verification is the manual/integration run (§5). Domain/coverage/operator logic (Phase 3+) gets no such exclusion — §5's exhaustive-testing rule is unchanged there |
 | D15 | 2026-07-21 | New Redpanda identity `rx-vigilance-test-producer` (WRITE-only on rx-fill-events + the two broadcast ref topics), dedicated to manual/test event injection, never used by the deployed job | `rx-vigilance-flink`'s READ-only ACL on its own source topic (#20) is correct least-privilege and must stay that way; smoke-testing needs *something* to act as the upstream producer without widening the job's own identity |
 | D16 | 2026-07-22 | `PdcSnapshot` shape resolved: `memberId`, `drugClass`, `totalDaysCovered`, `currentSupplyEndDate`, `emittedAt` (long) | Spec named the sink and its purpose ("coverage-day facts and running numerator") but never gave a field list; shape derived from the matching language used for `AdherenceState.totalDaysCovered` + the other two alerts' `emittedAt` pattern; confirmed with user before writing |
+| D17 | 2026-07-22 | Sonar `sonar.coverage.exclusions` extended to the 7 zero-logic domain records/enums (`RxFillEvent`, `GapRiskAlert`, `LapsedAlert`, `PdcSnapshot`, `DrugClassRef`, `EventType`, `Channel`) — `CoverageInterval` and `AdherenceState` deliberately excluded from this exclusion, since they carry real logic (compact-constructor guards) with real tests | Same reasoning as D14: plain records with no hand-written branches (JaCoCo-confirmed complexity of 1) have nothing meaningful to test; §5's exhaustive-testing rule stays fully in force for anything with actual logic |
