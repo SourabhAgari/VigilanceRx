@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 
-import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JobConfigTest {
@@ -40,6 +39,19 @@ class JobConfigTest {
         assertThat(config.getKafkaConfig().brokers()).isEqualTo("localhost:9092");
         assertThat(config.getKafkaConfig().schemaRegistryUrl()).isEqualTo("http://localhost:8081");
         assertThat(config.getCheckpointConfig().checkpointDirectory()).isEqualTo("file:///tmp/rx-vigilance-checkpoints");
+        assertThat(config.getStateBackEndConfig().ttlDays()).isEqualTo(400);
+    }
+
+    @Test
+    void unknownProfileFallsBackToEmptyWithoutError() throws IOException {
+        JobConfig config = JobConfig.fromArgs(new String[]{
+                "--profile", "nonexistent",
+                "--kafka.brokers", "cli-value:9092",
+                "--schema.registry.url", "http://cli-registry:8081",
+                "--checkpoint.dir", "file:///tmp/cli-checkpoints"
+        });
+
+        assertThat(config.getKafkaConfig().brokers()).isEqualTo("cli-value:9092");
     }
 
 }
