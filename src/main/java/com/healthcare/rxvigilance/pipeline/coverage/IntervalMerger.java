@@ -60,6 +60,7 @@ public final class IntervalMerger {
                 .anyMatch(interval -> interval.claimId().equals(fill.claimId()));
         if (alreadyProcessed) {
             LOG.warn("Duplicate claimId {} already merged; no-op", fill.claimId());
+            return state;
         }
 
         CoverageInterval newInterval = new CoverageInterval(

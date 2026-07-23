@@ -30,7 +30,7 @@ requires restoring it (one `terraform apply`).
 | 0 | Repo scaffolding & local environment | local | ✅ done 2026-07-16 |
 | 1 | Infrastructure bootstrap (Terraform) | cloud | ✅ done 2026-07-19 |
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
-| 3 | Domain model & interval logic | local | ☐ not started |
+| 3 | Domain model & interval logic | local | ✅ done 2026-07-23 |
 | 4 | Config, serialization, watermarks | local | ☐ not started |
 | 5 | Sources & sinks | local | ☐ not started |
 | 6 | Upstream broadcast filter | local | ☐ not started |
@@ -331,22 +331,46 @@ Epic #52; child issues #53–#55.
       instructions/branches on both classes per JaCoCo); Sonar coverage gate
       extended per D17 for the 7 zero-logic records. Sonar quality gate
       green at 100% coverage on new code.
-- [ ] `coverage/IntervalMerger`: pure functions — `merge(fill)`,
+- [x] #54 `coverage/IntervalMerger`: pure functions — `merge(fill)`,
       `unwind(originalClaimId)`, `recompute()` returning
       `(currentSupplyEndDate, totalDaysCovered)`
-- [ ] `IntervalMergerTest` — edge cases (each a named test):
-  - [ ] non-overlapping fill appends cleanly
-  - [ ] early refill: only non-overlapping days add to `totalDaysCovered`
-  - [ ] fill fully inside existing coverage adds zero days
-  - [ ] reversal of the latest fill shrinks end date
-  - [ ] reversal of a *middle* interval recomputes correctly
-  - [ ] reversal referencing unknown `claimId` is a safe no-op (logged)
-  - [ ] reversal leaving zero coverage returns empty state signal
-  - [ ] duplicate `claimId` fill is an idempotent no-op (Decision D-open-3)
-  - [ ] out-of-order fill (older `fillDate` after newer) merges correctly
+      — done 2026-07-23: `recompute()` is the shared algorithm both
+      `merge()`/`unwind()` delegate to (single source of truth for the
+      overlap/gap merge math, so FILL and REVERSAL paths can never quietly
+      disagree). `merge()` includes a duplicate-`claimId` idempotency guard
+      (D-open-3's resolution: dedup check lives inside `merge()` against
+      `activeCoverageIntervals`, not a separate recently-seen set).
+      `alertLeadDays`/`activeTimerTimestamp` are always passed through
+      unchanged — timer/lookup logic is Phase 7's `AdherenceProcessFunction`,
+      not this class's concern. Two real bugs caught and fixed during
+      implementation/testing (not just style): `recompute()`'s gap-handling
+      branch was originally nested inside the overlap check, silently
+      skipping genuine gaps entirely (caught by the first merge test);
+      the duplicate-`claimId` guard logged but didn't actually `return`,
+      so it never really no-opped (caught by the dedicated idempotency
+      test) — both are exactly why §5 treats the edge-case suite as
+      the gate, not a formality.
+- [x] #55 `IntervalMergerTest` — edge cases (each a named test):
+  - [x] non-overlapping fill appends cleanly
+  - [x] early refill: only non-overlapping days add to `totalDaysCovered`
+  - [x] fill fully inside existing coverage adds zero days
+  - [x] reversal of the latest fill shrinks end date
+  - [x] reversal of a *middle* interval recomputes correctly
+  - [x] reversal referencing unknown `claimId` is a safe no-op (logged)
+  - [x] reversal leaving zero coverage returns empty state signal
+  - [x] duplicate `claimId` fill is an idempotent no-op (Decision D-open-3)
+  - [x] out-of-order fill (older `fillDate` after newer) merges correctly
+      — done 2026-07-23: all 9 named cases green. Found and closed one more
+      coverage gap beyond the 9: the out-of-order test's starting state had
+      `lastFillDate=null`, which accidentally avoided exercising the
+      "keep existing lastFillDate" branch of `merge()`'s compound
+      null-or-not-later condition — fixed by giving that test a realistic
+      non-null starting `lastFillDate` plus an assertion it doesn't move.
 
-**Exit criteria**
-- 100% branch coverage on `IntervalMerger` (verify via jacoco); Sonar gate green
+**Exit criteria — verified 2026-07-23:**
+- ✅ 100% branch coverage on `IntervalMerger` (jacoco: `recompute`, `unwind`,
+  both lambdas already 100%; `merge` reached 100% after the lastFillDate
+  test fix); Sonar gate green
 
 ---
 
