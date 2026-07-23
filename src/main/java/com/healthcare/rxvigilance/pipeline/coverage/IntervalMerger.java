@@ -38,19 +38,18 @@ public final class IntervalMerger {
 
         for (int i = 1; i < sorted.size(); i++) {
             CoverageInterval next = sorted.get(i);
+            boolean overlapsOrAdjacent = !next.start().isAfter(mergedEnd);
 
-            if (!next.start().isAfter(mergedEnd)) {
-                if (next.end().isAfter(mergedEnd)) {
-                    totalDaysCovered += (int) ChronoUnit.DAYS.between(mergedEnd, next.end());
-                    mergedEnd = next.end();
-                } else {
-                    totalDaysCovered += (int) ChronoUnit.DAYS.between(next.start(), next.end());
-                    mergedEnd = next.end();
-                }
+            if (overlapsOrAdjacent && next.end().isAfter(mergedEnd)) {
+                totalDaysCovered += (int) ChronoUnit.DAYS.between(mergedEnd, next.end());
+                mergedEnd = next.end();
+            } else if (!overlapsOrAdjacent) {
+                totalDaysCovered += (int) ChronoUnit.DAYS.between(next.start(), next.end());
+                mergedEnd = next.end();
+            }
 
-                if (next.end().isAfter(currentSupplyEndDate)) {
-                    currentSupplyEndDate = next.end();
-                }
+            if (next.end().isAfter(currentSupplyEndDate)) {
+                currentSupplyEndDate = next.end();
             }
         }
         return new CoverageSummary(currentSupplyEndDate, totalDaysCovered);
