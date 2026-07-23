@@ -12,10 +12,14 @@ public final class JobConfig {
 
     private final KafkaConnectionConfig kafkaConfig;
     private final CheckpointConfig checkpointConfig;
+    private final StateBackEndConfig stateBackEndConfig;
 
-    private JobConfig(KafkaConnectionConfig kafkaConfig, CheckpointConfig checkpointConfig) {
+    private JobConfig(KafkaConnectionConfig kafkaConfig,
+                      CheckpointConfig checkpointConfig,
+                      StateBackEndConfig stateBackEndConfig) {
         this.kafkaConfig = kafkaConfig;
         this.checkpointConfig = checkpointConfig;
+        this.stateBackEndConfig = stateBackEndConfig;
     }
 
     public static JobConfig fromArgs(String[] args) throws IOException {
@@ -32,7 +36,8 @@ public final class JobConfig {
         merged = merged.mergeWith(cliParams);
 
         return new JobConfig(KafkaConnectionConfig.fromParams(merged),
-                CheckpointConfig.fromParams(merged));
+                CheckpointConfig.fromParams(merged),
+                StateBackEndConfig.fromParams(merged));
     }
 
     private static ParameterTool loadClassPathProfile(String profile) throws IOException {
@@ -54,5 +59,9 @@ public final class JobConfig {
 
     public CheckpointConfig getCheckpointConfig() {
         return checkpointConfig;
+    }
+
+    public StateBackEndConfig getStateBackEndConfig() {
+        return stateBackEndConfig;
     }
 }
