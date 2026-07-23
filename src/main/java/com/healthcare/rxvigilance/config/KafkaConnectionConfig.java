@@ -22,7 +22,7 @@ public record KafkaConnectionConfig(
         return saslUserName != null && saslPassword != null;
     }
 
-    private KafkaConnectionConfig fromParams(ParameterTool params) {
+    public static KafkaConnectionConfig fromParams(ParameterTool params) {
         return new KafkaConnectionConfig(
                 params.getRequired("kafka.brokers"),
                 params.getRequired("schema.registry.url"),
