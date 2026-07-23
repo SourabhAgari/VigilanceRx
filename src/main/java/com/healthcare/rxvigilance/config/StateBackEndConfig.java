@@ -11,12 +11,12 @@ public record StateBackEndConfig(int ttlDays) {
 
     public StateBackEndConfig {
         if(ttlDays <= 0) {
-            throw new IllegalArgumentException("state.days must be greater than 0");
+            throw new IllegalArgumentException("state.ttl.days must be greater than 0");
         }
     }
 
-    public StateBackEndConfig fromParams(ParameterTool params){
-        return new StateBackEndConfig(params.getInt("ttlDays", DEFAULT_TTL_DAYS));
+    public static StateBackEndConfig fromParams(ParameterTool params){
+        return new StateBackEndConfig(params.getInt("state.ttl.days", DEFAULT_TTL_DAYS));
     }
 
     public StateTtlConfig toStateTtlConfig(){
