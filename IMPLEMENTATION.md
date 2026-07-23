@@ -376,6 +376,8 @@ Epic #52; child issues #53–#55.
 
 ## Phase 4 — Config, serialization, watermarks
 
+Epic #59; child issues #60–#62.
+
 - [ ] `config/JobConfig`: `ParameterTool` + optional `--config.file` merge
       (file < CLI precedence), `StateBackendConfig` (RocksDB incremental,
       400-day TTL constant defined once)
