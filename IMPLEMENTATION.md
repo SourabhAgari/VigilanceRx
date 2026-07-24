@@ -31,7 +31,7 @@ requires restoring it (one `terraform apply`).
 | 1 | Infrastructure bootstrap (Terraform) | cloud | ✅ done 2026-07-19 |
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
 | 3 | Domain model & interval logic | local | ✅ done 2026-07-23 |
-| 4 | Config, serialization, watermarks | local | ☐ not started |
+| 4 | Config, serialization, watermarks | local | ◐ in progress (#60, #61 done; #62 remaining) |
 | 5 | Sources & sinks | local | ☐ not started |
 | 6 | Upstream broadcast filter | local | ☐ not started |
 | 7 | Adherence core — FILL path & timers | local | ☐ not started |
@@ -378,9 +378,20 @@ Epic #52; child issues #53–#55.
 
 Epic #59; child issues #60–#62.
 
-- [ ] `config/JobConfig`: `ParameterTool` + optional `--config.file` merge
+- [x] #60 `config/JobConfig`: `ParameterTool` + optional `--config.file` merge
       (file < CLI precedence), `StateBackendConfig` (RocksDB incremental,
       400-day TTL constant defined once)
+      — done 2026-07-23: modular composition (D18) — `JobConfig` composes
+      three typed sub-config records (`KafkaConnectionConfig`,
+      `CheckpointConfig`, `StateBackEndConfig`) rather than one flat class
+      of unrelated getters; each validates its own invariants in a compact
+      constructor. Three-tier precedence: classpath
+      `application-{profile}.properties` < `--config.file` < CLI args.
+      State TTL made configurable with a 400-day default rather than a
+      frozen constant (D19 — reversed mid-implementation: "defined once"
+      means DRY, not unconfigurable; forcing a redeploy to retune an
+      operational number is worse practice). 100% branch coverage on all
+      four classes; Sonar gate green.
 - [x] #61 `serialization/`: Avro (de)serializers against registry
       (`flink-avro-confluent-registry`); dead-letter path for
       undeserializable events
@@ -574,3 +585,6 @@ README; repo reproducible from clean clone + documented secrets
 | D15 | 2026-07-21 | New Redpanda identity `rx-vigilance-test-producer` (WRITE-only on rx-fill-events + the two broadcast ref topics), dedicated to manual/test event injection, never used by the deployed job | `rx-vigilance-flink`'s READ-only ACL on its own source topic (#20) is correct least-privilege and must stay that way; smoke-testing needs *something* to act as the upstream producer without widening the job's own identity |
 | D16 | 2026-07-22 | `PdcSnapshot` shape resolved: `memberId`, `drugClass`, `totalDaysCovered`, `currentSupplyEndDate`, `emittedAt` (long) | Spec named the sink and its purpose ("coverage-day facts and running numerator") but never gave a field list; shape derived from the matching language used for `AdherenceState.totalDaysCovered` + the other two alerts' `emittedAt` pattern; confirmed with user before writing |
 | D17 | 2026-07-22 | Sonar `sonar.coverage.exclusions` extended to the 7 zero-logic domain records/enums (`RxFillEvent`, `GapRiskAlert`, `LapsedAlert`, `PdcSnapshot`, `DrugClassRef`, `EventType`, `Channel`) — `CoverageInterval` and `AdherenceState` deliberately excluded from this exclusion, since they carry real logic (compact-constructor guards) with real tests | Same reasoning as D14: plain records with no hand-written branches (JaCoCo-confirmed complexity of 1) have nothing meaningful to test; §5's exhaustive-testing rule stays fully in force for anything with actual logic |
+| D18 | 2026-07-23 | `JobConfig` composed of three typed sub-config records (`KafkaConnectionConfig`, `CheckpointConfig`, `StateBackEndConfig`) instead of one flat class with 20+ unrelated getters (the ClaimGuard-project pattern reviewed as a reference) | Cohesion: each record groups exactly the settings a caller actually needs together; fail-fast validation lives in each record's own compact constructor instead of a separate `validate()` someone has to remember to call |
+| D19 | 2026-07-23 | RocksDB state TTL is a *configurable* value with a 400-day default (`state.ttl.days`), not a frozen unconfigurable constant as first proposed | Reversed mid-implementation: CLAUDE.md's "defined once" only requires the default to exist in one place (DRY), not that it be immutable; forcing a code change + redeploy to retune an operational number is worse practice than a default-with-override |
+| D20 | 2026-07-24 | `serialization/` deserializer kept as a single concrete class (`RxFillEventAvroDeserializer`), not a generic Strategy-pattern engine or a shared interface — both were built, discussed, and reverted | Only one Avro-backed deserializer is currently spec'd (the two broadcast topics have no registered schema); the generic engine and the interface each cost real clarity in a learning-first codebase for a reuse case that doesn't exist yet — revisit if/when a second concrete Avro deserializer is actually needed |
