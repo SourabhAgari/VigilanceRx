@@ -19,6 +19,7 @@
         <assertj.version>3.25.3</assertj.version>
         <testcontainers.version>1.19.8</testcontainers.version>
         <maven.shade.version>3.5.1</maven.shade.version>
+        <kafka.avro.serializer.version>7.7.1</kafka.avro.serializer.version>
         <sonar.organization>sourabhagari</sonar.organization>
         <sonar.projectKey>SourabhAgari_VigilanceRx</sonar.projectKey>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
@@ -68,6 +69,11 @@
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-avro</artifactId>
             <version>${flink.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.confluent</groupId>
+            <artifactId>kafka-avro-serializer</artifactId>
+            <version>${kafka.avro.serializer.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.flink</groupId>
