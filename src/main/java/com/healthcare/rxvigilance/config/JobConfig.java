@@ -13,13 +13,16 @@ public final class JobConfig {
     private final KafkaConnectionConfig kafkaConfig;
     private final CheckpointConfig checkpointConfig;
     private final StateBackEndConfig stateBackEndConfig;
+    private final WatermarkConfig watermarkConfig;
 
     private JobConfig(KafkaConnectionConfig kafkaConfig,
                       CheckpointConfig checkpointConfig,
-                      StateBackEndConfig stateBackEndConfig) {
+                      StateBackEndConfig stateBackEndConfig,
+                      WatermarkConfig watermarkConfig) {
         this.kafkaConfig = kafkaConfig;
         this.checkpointConfig = checkpointConfig;
         this.stateBackEndConfig = stateBackEndConfig;
+        this.watermarkConfig = watermarkConfig;
     }
 
     public static JobConfig fromArgs(String[] args) throws IOException {
@@ -37,7 +40,8 @@ public final class JobConfig {
 
         return new JobConfig(KafkaConnectionConfig.fromParams(merged),
                 CheckpointConfig.fromParams(merged),
-                StateBackEndConfig.fromParams(merged));
+                StateBackEndConfig.fromParams(merged),
+                WatermarkConfig.fromParams(merged));
     }
 
     private static ParameterTool loadClassPathProfile(String profile) throws IOException {
@@ -64,4 +68,6 @@ public final class JobConfig {
     public StateBackEndConfig getStateBackEndConfig() {
         return stateBackEndConfig;
     }
+
+    public WatermarkConfig getWatermarkConfig() {return watermarkConfig;}
 }
