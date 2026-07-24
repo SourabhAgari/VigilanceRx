@@ -381,9 +381,29 @@ Epic #59; child issues #60–#62.
 - [ ] `config/JobConfig`: `ParameterTool` + optional `--config.file` merge
       (file < CLI precedence), `StateBackendConfig` (RocksDB incremental,
       400-day TTL constant defined once)
-- [ ] `serialization/`: Avro (de)serializers against registry
+- [x] #61 `serialization/`: Avro (de)serializers against registry
       (`flink-avro-confluent-registry`); dead-letter path for
       undeserializable events
+      — done 2026-07-24: `RxFillEventAvroDeserializer` wraps Confluent's
+      `KafkaAvroDeserializer` directly (not Flink's registry wrapper, which
+      can't accept an injected test client) — production uses a real
+      `CachedSchemaRegistryClient`, tests use `MockSchemaRegistryClient`,
+      same class, zero network calls in tests. `DeserializationResult`
+      wraps success/failure so the deserializer never throws for bad
+      input — malformed magic byte routes to failure, not a crash.
+      GenericRecord → RxFillEvent mapping uses Avro's own tested
+      `Conversions.DecimalConversion` for the decimal field rather than
+      hand-rolled byte decoding. Exception handling narrowed to the
+      specific types that represent genuinely bad external data
+      (`SerializationException`/`ClassCastException`/
+      `IllegalArgumentException`/`NullPointerException`), not a blanket
+      `catch (Exception)` that would also mask our own bugs as dead-letter
+      events. Round-trip tests cover both FILL (`originalClaimId` null)
+      and REVERSAL (`originalClaimId` populated) cases; 100% branch
+      coverage; Sonar gate green. D20 records two design detours
+      (generic Strategy-pattern engine, then a lightweight interface)
+      that were built, discussed, and deliberately reverted — kept for
+      the reasoning, not the code.
 - [ ] `watermark/RxFillWatermarkStrategy`: BoundedOutOfOrderness(24h)
       **+ withIdleness(5min)** — spec marks idleness mandatory
 - [ ] Unit tests: config precedence; serializer round-trip; deserializer
