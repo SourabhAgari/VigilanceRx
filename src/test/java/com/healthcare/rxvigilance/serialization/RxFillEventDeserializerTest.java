@@ -12,7 +12,6 @@ import org.apache.avro.generic.GenericRecordBuilder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.as;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.InputStream;
@@ -71,14 +70,14 @@ class RxFillEventDeserializerTest {
 
     @Test
     void roundTripsAReversalWithOriginalClaimId() {
-        GenericRecord record = buildFillRecord(
+        GenericRecord genericRecord = buildFillRecord(
                 "CLM-2", LocalDate.of(2026,
                         Month.JANUARY, 1),
                 30, new BigDecimal("30.00"),
                 "REVERSAL",
                 "CLM-1");
 
-        byte[] bytes = serializer.serialize("rx-fill-events", record);
+        byte[] bytes = serializer.serialize("rx-fill-events", genericRecord);
         DeserializationResult deserializationResult = deserializer.deserialize(bytes);
 
         assertThat(deserializationResult.isSuccess()).isTrue();
@@ -95,7 +94,7 @@ class RxFillEventDeserializerTest {
         DeserializationResult result2 = DeserializationResult.failure(bytes2, "bad data");
 
         assertThat(result1).isEqualTo(result2);
-        assertThat(result1.hashCode()).isEqualTo(result2.hashCode());
+        assertThat(result1.hashCode()).hasSameHashCodeAs(result2.hashCode());
     }
 
     @Test
@@ -119,6 +118,7 @@ class RxFillEventDeserializerTest {
 
         assertThat(result.equals("not a DeserializationResult")).isFalse();
     }
+
 
     private GenericRecord buildFillRecord(String claimId,
                                           LocalDate fillDate, int daySupply,
