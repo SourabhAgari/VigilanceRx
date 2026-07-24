@@ -31,7 +31,7 @@ requires restoring it (one `terraform apply`).
 | 1 | Infrastructure bootstrap (Terraform) | cloud | ✅ done 2026-07-19 |
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
 | 3 | Domain model & interval logic | local | ✅ done 2026-07-23 |
-| 4 | Config, serialization, watermarks | local | ☐ not started |
+| 4 | Config, serialization, watermarks | local | ◐ in progress (#60, #61 done; #62 remaining) |
 | 5 | Sources & sinks | local | ☐ not started |
 | 6 | Upstream broadcast filter | local | ☐ not started |
 | 7 | Adherence core — FILL path & timers | local | ☐ not started |
@@ -398,9 +398,29 @@ Epic #59; child issues #60–#62.
       had never actually been called by any test despite the class
       compiling and other tests passing. 100% branch coverage on all
       four classes; Sonar gate green.
-- [ ] `serialization/`: Avro (de)serializers against registry
+- [x] #61 `serialization/`: Avro (de)serializers against registry
       (`flink-avro-confluent-registry`); dead-letter path for
       undeserializable events
+      — done 2026-07-24: `RxFillEventAvroDeserializer` wraps Confluent's
+      `KafkaAvroDeserializer` directly (not Flink's registry wrapper, which
+      can't accept an injected test client) — production uses a real
+      `CachedSchemaRegistryClient`, tests use `MockSchemaRegistryClient`,
+      same class, zero network calls in tests. `DeserializationResult`
+      wraps success/failure so the deserializer never throws for bad
+      input — malformed magic byte routes to failure, not a crash.
+      GenericRecord → RxFillEvent mapping uses Avro's own tested
+      `Conversions.DecimalConversion` for the decimal field rather than
+      hand-rolled byte decoding. Exception handling narrowed to the
+      specific types that represent genuinely bad external data
+      (`SerializationException`/`ClassCastException`/
+      `IllegalArgumentException`/`NullPointerException`), not a blanket
+      `catch (Exception)` that would also mask our own bugs as dead-letter
+      events. Round-trip tests cover both FILL (`originalClaimId` null)
+      and REVERSAL (`originalClaimId` populated) cases; 100% branch
+      coverage; Sonar gate green. D20 records two design detours
+      (generic Strategy-pattern engine, then a lightweight interface)
+      that were built, discussed, and deliberately reverted — kept for
+      the reasoning, not the code.
 - [ ] `watermark/RxFillWatermarkStrategy`: BoundedOutOfOrderness(24h)
       **+ withIdleness(5min)** — spec marks idleness mandatory
 - [ ] Unit tests: config precedence; serializer round-trip; deserializer
@@ -573,3 +593,4 @@ README; repo reproducible from clean clone + documented secrets
 | D17 | 2026-07-22 | Sonar `sonar.coverage.exclusions` extended to the 7 zero-logic domain records/enums (`RxFillEvent`, `GapRiskAlert`, `LapsedAlert`, `PdcSnapshot`, `DrugClassRef`, `EventType`, `Channel`) — `CoverageInterval` and `AdherenceState` deliberately excluded from this exclusion, since they carry real logic (compact-constructor guards) with real tests | Same reasoning as D14: plain records with no hand-written branches (JaCoCo-confirmed complexity of 1) have nothing meaningful to test; §5's exhaustive-testing rule stays fully in force for anything with actual logic |
 | D18 | 2026-07-23 | `JobConfig` composed of three typed sub-config records (`KafkaConnectionConfig`, `CheckpointConfig`, `StateBackEndConfig`) instead of one flat class with 20+ unrelated getters (the ClaimGuard-project pattern reviewed as a reference) | Cohesion: each record groups exactly the settings a caller actually needs together (e.g., "give me the Kafka config" not five loose strings); fail-fast validation lives in each record's own compact constructor instead of a separate `validate()` someone has to remember to call |
 | D19 | 2026-07-23 | RocksDB state TTL is a *configurable* value with a 400-day default (`state.ttl.days`), not a frozen unconfigurable constant as first proposed | Reversed mid-implementation: CLAUDE.md's "defined once" was initially read as "immutable," but the DRY guarantee only requires the default to exist in one place — forcing a code change + redeploy to retune an operational number is worse practice than making it a default-with-override, same as every other setting in this project |
+| D20 | 2026-07-24 | `serialization/` deserializer kept as a single concrete class (`RxFillEventAvroDeserializer`), not a generic Strategy-pattern engine or a shared interface — both were built, discussed, and reverted | Only one Avro-backed deserializer is currently spec'd (the two broadcast topics have no registered schema); the generic engine and the interface each cost real clarity in a learning-first codebase for a reuse case that doesn't exist yet — revisit if/when a second concrete Avro deserializer is actually needed |
