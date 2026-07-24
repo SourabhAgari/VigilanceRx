@@ -84,11 +84,41 @@ class RxFillEventDeserializerTest {
         assertThat(deserializationResult.isSuccess()).isTrue();
         assertThat(deserializationResult.event().claimId()).isEqualTo("CLM-2");
         assertThat(deserializationResult.event().originalClaimId()).isEqualTo("CLM-1");
-
-
     }
 
+    @Test
+    void equalsComparesRawBytesByContentNotReference() {
+        byte[] bytes1 = {1, 2, 3};
+        byte[] bytes2 = {1, 2, 3}; // same content, different array instance
 
+        DeserializationResult result1 = DeserializationResult.failure(bytes1, "bad data");
+        DeserializationResult result2 = DeserializationResult.failure(bytes2, "bad data");
+
+        assertThat(result1).isEqualTo(result2);
+        assertThat(result1.hashCode()).isEqualTo(result2.hashCode());
+    }
+
+    @Test
+    void notEqualsWhenRawBytesContentDiffers() {
+        DeserializationResult result1 = DeserializationResult.failure(new byte[]{1, 2, 3}, "bad data");
+        DeserializationResult result2 = DeserializationResult.failure(new byte[]{4, 5, 6}, "bad data");
+
+        assertThat(result1).isNotEqualTo(result2);
+    }
+
+    @Test
+    void toStringIncludesActualByteValues() {
+        DeserializationResult result = DeserializationResult.failure(new byte[]{1, 2, 3}, "bad data");
+
+        assertThat(result.toString()).contains("[1, 2, 3]");
+    }
+
+    @Test
+    void notEqualsToDifferentType() {
+        DeserializationResult result = DeserializationResult.failure(new byte[]{1, 2, 3}, "bad data");
+
+        assertThat(result.equals("not a DeserializationResult")).isFalse();
+    }
 
     private GenericRecord buildFillRecord(String claimId,
                                           LocalDate fillDate, int daySupply,
