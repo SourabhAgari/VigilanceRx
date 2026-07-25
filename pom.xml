@@ -26,6 +26,7 @@
         <sonar.sources>pom.xml,src/main,infra,k8s,Dockerfile</sonar.sources>
         <sonar.coverage.exclusions>src/main/java/com/healthcare/rxvigilance/SmokeJob.java,src/main/java/com/healthcare/rxvigilance/domain/RxFillEvent.java,src/main/java/com/healthcare/rxvigilance/domain/GapRiskAlert.java,src/main/java/com/healthcare/rxvigilance/domain/LapsedAlert.java,src/main/java/com/healthcare/rxvigilance/domain/PdcSnapshot.java,src/main/java/com/healthcare/rxvigilance/domain/DrugClassRef.java,src/main/java/com/healthcare/rxvigilance/domain/EventType.java,src/main/java/com/healthcare/rxvigilance/domain/Channel.java
         </sonar.coverage.exclusions>
+        <sonar.scanner.skipJreProvisioning>true</sonar.scanner.skipJreProvisioning>
     </properties>
 
     <dependencies>
