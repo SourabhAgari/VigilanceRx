@@ -31,7 +31,7 @@ requires restoring it (one `terraform apply`).
 | 1 | Infrastructure bootstrap (Terraform) | cloud | ✅ done 2026-07-19 |
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
 | 3 | Domain model & interval logic | local | ✅ done 2026-07-23 |
-| 4 | Config, serialization, watermarks | local | ◐ in progress (#60, #61 done; #62 remaining) |
+| 4 | Config, serialization, watermarks | local | ✅ done 2026-07-25 |
 | 5 | Sources & sinks | local | ☐ not started |
 | 6 | Upstream broadcast filter | local | ☐ not started |
 | 7 | Adherence core — FILL path & timers | local | ☐ not started |
@@ -421,12 +421,49 @@ Epic #59; child issues #60–#62.
       (generic Strategy-pattern engine, then a lightweight interface)
       that were built, discussed, and deliberately reverted — kept for
       the reasoning, not the code.
-- [ ] `watermark/RxFillWatermarkStrategy`: BoundedOutOfOrderness(24h)
+- [x] #62 `watermark/RxFillWatermarkStrategy`: BoundedOutOfOrderness(24h)
       **+ withIdleness(5min)** — spec marks idleness mandatory
-- [ ] Unit tests: config precedence; serializer round-trip; deserializer
+      — done 2026-07-25: durations sourced from a new `WatermarkConfig`
+      record (`config/` package, same compact-constructor-validation +
+      `fromParams` pattern as the other three sub-configs), not literals
+      on the strategy class — caught mid-implementation on user's "nothing
+      must be hardcoded" instruction (D21). Default idleness constant was
+      initially miscoded as 5 *hours* (`Duration.ofHours(5)`); caught by
+      writing the defaults test before fixing the constant, per the
+      test-first pattern established in this project — corrected to
+      `Duration.ofMinutes(5)` per the CLAUDE.md §4 invariant. Watermark
+      generator/timestamp-assigner behavior verified by extracting and
+      driving `TimestampAssigner`/`WatermarkGenerator` directly (Flink's
+      strategy object has no observable behavior until its two products
+      are driven by hand) against a hand-written `RecordingWatermarkOutput`
+      test double: UTC-midnight timestamp mapping, bounded-out-of-orderness
+      trailing the max-seen timestamp (not last-seen) by exactly
+      `outOfOrderness` (confirmed via bytecode: Flink's
+      `BoundedOutOfOrdernessWatermarks` emits `maxTimestamp -
+      outOfOrderness - 1`, not a round value), and idleness marking
+      (confirmed via bytecode that `WatermarksWithIdleness`'s inactivity
+      clock starts on the *first* `checkIfIdle()` call, not at generator
+      creation — test needs two `onPeriodicEmit` calls with a sleep
+      between them, not a sleep before a single call). 100% branch
+      coverage on `WatermarkConfig` and `RxFillWatermarkStrategy`;
+      `mvn clean verify` green (21 classes analyzed). Sonar gate to be
+      confirmed on PR CI (§8).
+- [x] Unit tests: config precedence; serializer round-trip; deserializer
       failure → dead-letter signal
+      — done 2026-07-25: config precedence covered by `JobConfigTest`
+      (#60: CLI-over-file override, classpath profile load, unknown-profile
+      fallback); serializer round-trip + dead-letter covered by
+      `RxFillEventAvroDeserializerTest` (#61); watermark strategy covered
+      by `RxFillWatermarkStrategyTest` (#62, above) — this line closes out
+      across all three Phase 4 issues.
 
-**Exit criteria**: tests green; no hardcoded config strings (Sonar rule spot-check)
+**Exit criteria**: tests green (confirmed — `mvn clean verify` BUILD
+SUCCESS); no hardcoded config strings — all Phase 4 thresholds
+(Kafka/checkpoint/state-TTL/watermark) now sourced via `ParameterTool`
+through typed config records, none left as literals in pipeline code;
+Sonar rule spot-check to be confirmed on PR CI, not blocking this ledger
+update per established practice (#60/#61 verification gate is
+`mvn clean verify`, Sonar is the PR-merge gate per §8)
 
 ---
 
@@ -594,3 +631,4 @@ README; repo reproducible from clean clone + documented secrets
 | D18 | 2026-07-23 | `JobConfig` composed of three typed sub-config records (`KafkaConnectionConfig`, `CheckpointConfig`, `StateBackEndConfig`) instead of one flat class with 20+ unrelated getters (the ClaimGuard-project pattern reviewed as a reference) | Cohesion: each record groups exactly the settings a caller actually needs together (e.g., "give me the Kafka config" not five loose strings); fail-fast validation lives in each record's own compact constructor instead of a separate `validate()` someone has to remember to call |
 | D19 | 2026-07-23 | RocksDB state TTL is a *configurable* value with a 400-day default (`state.ttl.days`), not a frozen unconfigurable constant as first proposed | Reversed mid-implementation: CLAUDE.md's "defined once" was initially read as "immutable," but the DRY guarantee only requires the default to exist in one place — forcing a code change + redeploy to retune an operational number is worse practice than making it a default-with-override, same as every other setting in this project |
 | D20 | 2026-07-24 | `serialization/` deserializer kept as a single concrete class (`RxFillEventAvroDeserializer`), not a generic Strategy-pattern engine or a shared interface — both were built, discussed, and reverted | Only one Avro-backed deserializer is currently spec'd (the two broadcast topics have no registered schema); the generic engine and the interface each cost real clarity in a learning-first codebase for a reuse case that doesn't exist yet — revisit if/when a second concrete Avro deserializer is actually needed |
+| D21 | 2026-07-25 | Watermark thresholds (`forBoundedOutOfOrderness` duration, `withIdleness` duration) sourced from a new `WatermarkConfig` record via `ParameterTool`, not literals on `RxFillWatermarkStrategy` — same `fromParams`/compact-constructor pattern as `KafkaConnectionConfig`/`CheckpointConfig`/`StateBackEndConfig` (D18) | User: "nothing must be hardcoded, everything must come from the environment variable" — an explicit, general instruction, not scoped to one class; applies the same reasoning already established by D19 (state TTL) to the watermark durations, closing the one remaining hardcoded-threshold gap in Phase 4 |
