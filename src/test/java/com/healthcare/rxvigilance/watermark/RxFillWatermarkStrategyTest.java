@@ -19,7 +19,7 @@ import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class RxFillWatermarkStrategyTest {
+class RxFillWatermarkStrategyTest {
 
     @Test
     void extractTimestampMapsFillDateToUtcMidnightMillis() {
@@ -29,7 +29,7 @@ public class RxFillWatermarkStrategyTest {
                 .createTimestampAssigner(UnregisteredMetricsGroup::new);
 
         RxFillEvent event = fillEvent(LocalDate.of(2026, Month.JULY, 20));
-        long expected = LocalDate.of(2026, 7, 20)
+        long expected = LocalDate.of(2026, Month.JULY, 20)
                 .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
         assertThat(timestampAssigner.extractTimestamp(event, Long.MIN_VALUE)).isEqualTo(expected);
     }
