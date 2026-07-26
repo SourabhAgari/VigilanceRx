@@ -6,7 +6,9 @@ public record KafkaConnectionConfig(
         String brokers,
         String schemaRegistryUrl,
         String saslUserName,
-        String saslPassword
+        String saslPassword,
+        String securityProtocol,
+        String saslMechanism
 ) {
 
     public KafkaConnectionConfig {
@@ -27,7 +29,9 @@ public record KafkaConnectionConfig(
                 params.getRequired("kafka.brokers"),
                 params.getRequired("schema.registry.url"),
                 System.getenv("KAFKA_SASL_USERNAME"),
-                System.getenv("KAFKA_SASL_PASSWORD"));
+                System.getenv("KAFKA_SASL_PASSWORD"),
+                params.get("kafka.security.protocol",null),
+                params.get("kafka.sasl.mechanism",null));
     }
 
 }

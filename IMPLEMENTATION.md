@@ -469,7 +469,43 @@ update per established practice (#60/#61 verification gate is
 
 ## Phase 5 — Sources & sinks
 
-- [ ] `RxFillEventKafkaSource` (watermark strategy applied at source)
+- [x] #68 `RxFillEventKafkaSource` (watermark strategy applied at source)
+      — done 2026-07-26: three chained operators — `KafkaSource<DeserializationResult>`
+      via `env.fromSource(..., WatermarkStrategy.noWatermarks(), ...)`, then a
+      package-private `DeadLetterSplitFunction` (`ProcessFunction`) splitting
+      success → main `DataStream<RxFillEvent>` / failure → `DEAD_LETTER_TAG`
+      side output, then `.assignTimestampsAndWatermarks(RxFillWatermarkStrategy
+      .create(watermarkConfig))` — this ordering is required because the
+      source's raw output type (`DeserializationResult`) can't carry a
+      `WatermarkStrategy<RxFillEvent>`, and dead-letter records have no
+      `fillDate` to watermark on anyway; no shuffle/keyBy happens before the
+      watermark-assignment step, so this is operationally identical to
+      applying watermarks directly at the source. All three operators have
+      explicit `.uid(...)` (CLAUDE.md §4). `kafka.starting.offsets`,
+      `kafka.topic.rx-fill-events`, `kafka.consumer.group.id` all configurable
+      via `ParameterTool` (defaults: earliest / rx-fill-events /
+      rx-vigilance-flink — the last must stay prefixed `rx-vigilance` per
+      Terraform's `read-consumer-group` PREFIXED ACL). `KafkaConnectionConfig`
+      (#60) extended with `securityProtocol`/`saslMechanism` fields that
+      `application-gke.properties` already defined but nothing previously
+      read — closed via `securityProperties()`, only populated when
+      `hasSaslCredentials()`.
+      Surfaced a real, project-wide issue: Flink 1.18's bundled Kryo (2.24.0)
+      cannot serialize Java records at all — `Unsafe.objectFieldOffset()`
+      (used by Kryo's default `FieldSerializer`) throws
+      `UnsupportedOperationException` on any record field, and Flink's
+      `TypeExtractor` doesn't recognize records as POJOs, so it falls back to
+      Kryo for any record-typed stream element. Resolved via D22. Also fixed
+      mid-task: `mvn -B sonar:sonar` broke Sonar's own JRE auto-provisioning
+      wall unrelated to this task (network flakiness, not a code defect —
+      no ledger action needed); Surefire's `--add-opens=java.base/java.util`
+      (needed for Kryo's reflection even on non-record types) had to be
+      wired via JaCoCo's late-bound `@{jacocoArgLine}` property, not
+      `${argLine}` — the early-bound form silently defeated JaCoCo's own
+      `prepare-agent` property injection. 100% branch coverage on
+      `RxFillEventKafkaSource`, `RxFillEventKryoSerializer`,
+      `DeserializationResultKryoSerializer`; `mvn clean verify` green
+      (27 classes analyzed).
 - [ ] `ReferenceDataSources`: both broadcast sources
       (`ndc-drug-class-ref`, `alert-lead-time-ref`)
 - [ ] `AlertKafkaSinks`: 4 sinks, exactly-once, operator UIDs
@@ -632,3 +668,4 @@ README; repo reproducible from clean clone + documented secrets
 | D19 | 2026-07-23 | RocksDB state TTL is a *configurable* value with a 400-day default (`state.ttl.days`), not a frozen unconfigurable constant as first proposed | Reversed mid-implementation: CLAUDE.md's "defined once" was initially read as "immutable," but the DRY guarantee only requires the default to exist in one place — forcing a code change + redeploy to retune an operational number is worse practice than making it a default-with-override, same as every other setting in this project |
 | D20 | 2026-07-24 | `serialization/` deserializer kept as a single concrete class (`RxFillEventAvroDeserializer`), not a generic Strategy-pattern engine or a shared interface — both were built, discussed, and reverted | Only one Avro-backed deserializer is currently spec'd (the two broadcast topics have no registered schema); the generic engine and the interface each cost real clarity in a learning-first codebase for a reuse case that doesn't exist yet — revisit if/when a second concrete Avro deserializer is actually needed |
 | D21 | 2026-07-25 | Watermark thresholds (`forBoundedOutOfOrderness` duration, `withIdleness` duration) sourced from a new `WatermarkConfig` record via `ParameterTool`, not literals on `RxFillWatermarkStrategy` — same `fromParams`/compact-constructor pattern as `KafkaConnectionConfig`/`CheckpointConfig`/`StateBackEndConfig` (D18) | User: "nothing must be hardcoded, everything must come from the environment variable" — an explicit, general instruction, not scoped to one class; applies the same reasoning already established by D19 (state TTL) to the watermark durations, closing the one remaining hardcoded-threshold gap in Phase 4 |
+| D22 | 2026-07-26 | Domain records that cross a Flink serialization boundary (`RxFillEvent`, `DeserializationResult` now; `AdherenceState`/`CoverageInterval`/alert types expected in Phase 6/7) get a small hand-written `com.esotericsoftware.kryo.Serializer<T>` per type, registered via `ExecutionConfig.registerTypeWithKryoSerializer(...)` — not a full custom `TypeInformation`/`TypeSerializer`, and not converting domain records to mutable POJOs | Flink 1.18's bundled Kryo (2.24.0, via `chill-java`) cannot serialize records at all — `FieldSerializer`'s `Unsafe.objectFieldOffset()` throws on any record field, and `TypeExtractor` doesn't recognize records as POJOs. A full custom `TypeSerializer` (checkpoint schema-evolution machinery) is more than this project needs; converting records to mutable POJOs would reverse CLAUDE.md §7's explicit "records for domain objects" standard across every domain class already built. Hand-written Kryo serializers keep `domain/` completely Flink-import-free (§4) at a small, repeatable per-type cost |
