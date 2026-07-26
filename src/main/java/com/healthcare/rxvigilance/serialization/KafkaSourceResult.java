@@ -1,22 +1,19 @@
 package com.healthcare.rxvigilance.serialization;
 
-import com.healthcare.rxvigilance.domain.RxFillEvent;
-
 import java.util.Arrays;
 import java.util.Objects;
 
-public record DeserializationResult(RxFillEvent event, byte[] rawBytes, String errorMessage) {
-
+public record KafkaSourceResult<T>(T value, byte[] rawBytes, String errorMessage) {
     public boolean isSuccess() {
-        return event != null;
+        return value != null;
     }
 
-    public static DeserializationResult success(RxFillEvent event) {
-        return new DeserializationResult(event, null, null);
+    public static <T> KafkaSourceResult<T> success(T value) {
+        return new KafkaSourceResult<>(value, null, null);
     }
 
-    public static DeserializationResult failure(byte[] rawBytes, String errorMessage) {
-        return new DeserializationResult(null, rawBytes, errorMessage);
+    public static <T> KafkaSourceResult<T> failure(byte[] rawBytes, String errorMessage) {
+        return new KafkaSourceResult<>(null, rawBytes, errorMessage);
     }
 
     @Override
@@ -24,24 +21,24 @@ public record DeserializationResult(RxFillEvent event, byte[] rawBytes, String e
         if (this == o) {
             return true;
         }
-        if (!(o instanceof DeserializationResult other)) {
+        if (!(o instanceof KafkaSourceResult<?> other)) {
             return false;
         }
-        return Objects.equals(event, other.event)
+        return Objects.equals(value, other.value)
                 && Arrays.equals(rawBytes, other.rawBytes)
                 && Objects.equals(errorMessage, other.errorMessage);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(event, errorMessage);
+        int result = Objects.hash(value, errorMessage);
         result = 31 * result + Arrays.hashCode(rawBytes);
         return result;
     }
 
     @Override
     public String toString() {
-        return "DeserializationResult[event=" + event
+        return "KafkaSourceResult[value=" + value
                 + ", rawBytes=" + Arrays.toString(rawBytes)
                 + ", errorMessage=" + errorMessage + "]";
     }
