@@ -10,14 +10,19 @@ class KafkaConnectionConfigTest {
     @Test
     void rejectBlankBrokers() {
         assertThatThrownBy(() -> new KafkaConnectionConfig(
-                "", "http://registry", null, null
+                "", "http://registry", null, null,null,null
         )).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectsBlankSchemaRegistryUrl() {
         assertThatThrownBy(() -> new KafkaConnectionConfig(
-                "localhost:9092", "", null, null
+                "localhost:9092",
+                "",
+                null,
+                null,
+                null,
+                null
         )).isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -27,11 +32,13 @@ class KafkaConnectionConfigTest {
                 "localhost:9092",
                 "http://registry",
                 "user",
-                "pass");
+                "pass",null,null);
 
         KafkaConnectionConfig withoutCredentials = new KafkaConnectionConfig(
                 "localhost:9092",
                 "http://registry",
+                null,
+                null,
                 null,
                 null
         );
