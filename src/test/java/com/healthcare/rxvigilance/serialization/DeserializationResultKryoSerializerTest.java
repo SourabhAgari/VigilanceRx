@@ -9,10 +9,10 @@ import com.healthcare.rxvigilance.domain.RxFillEvent;
 import com.healthcare.rxvigilance.serialization.kryo.DeserializationResultKryoSerializer;
 import com.healthcare.rxvigilance.serialization.kryo.RxFillEventKryoSerializer;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.shaded.org.bouncycastle.util.Bytes;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Month;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,7 +24,7 @@ class DeserializationResultKryoSerializerTest {
     void roundTripsSuccessResult() {
         kryo.register(RxFillEvent.class, new RxFillEventKryoSerializer());
         RxFillEvent event = new RxFillEvent(
-                EventType.FILL, "CLM-1", "MBR-1", "NDC-1", LocalDate.of(2026, 7, 20), 30,
+                EventType.FILL, "CLM-1", "MBR-1", "NDC-1", LocalDate.of(2026, Month.JULY, 20), 30,
                 BigDecimal.valueOf(30), "PHM-1", "RX-1", 3, Channel.RETAIL, null);
         DeserializationResult result = DeserializationResult.success(event);
 
