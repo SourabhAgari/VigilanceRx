@@ -17,13 +17,13 @@ public class RecordKryoSerializer extends Serializer<Record> {
     }
 
     @Override
-    public void write(Kryo kryo, Output output, Record record) {
-        for (RecordComponent component : record.getClass().getRecordComponents()) {
+    public void write(Kryo kryo, Output output, Record rec) {
+        for (RecordComponent component : rec.getClass().getRecordComponents()) {
             try {
-                kryo.writeClassAndObject(output, component.getAccessor().invoke(record));
+                kryo.writeClassAndObject(output, component.getAccessor().invoke(rec));
             } catch (ReflectiveOperationException e) {
                 throw new KryoException("Failed to read component " + component.getName()
-                        + " of " + record.getClass(), e);
+                        + " of " + rec.getClass(), e);
             }
         }
     }
@@ -42,7 +42,6 @@ public class RecordKryoSerializer extends Serializer<Record> {
                     .map(RecordComponent::getType)
                     .toArray(Class[]::new);
             Constructor<Record> canonicalConstructor = aClass.getDeclaredConstructor(paramTypes);
-            canonicalConstructor.setAccessible(true);
             return canonicalConstructor.newInstance(args);
         } catch (ReflectiveOperationException e) {
             throw new KryoException("Failed to construct " + aClass, e);
