@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "PdcSnapshot",
+  "namespace": "com.healthcare.rxvigilance.avro",
+  "doc": "Coverage-day facts and running numerator — not a finished PDC ratio (FR-6b)",
+  "fields": [
+    { "name": "memberId",           "type": "string" },
+    { "name": "drugClass",          "type": "string" },
+    { "name": "totalDaysCovered",   "type": "int" },
+    { "name": "currentSupplyEndDate", "type": { "type": "int", "logicalType": "date" } },
+    { "name": "emittedAt",          "type": { "type": "long", "logicalType": "timestamp-millis" } }
+  ]
+}

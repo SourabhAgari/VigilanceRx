@@ -176,6 +176,10 @@ register_schema \
       alert-lead-time-ref-value \
       src/main/resources/alert-lead-time-ref.avsc
 
+register_schema \
+      pdc-snapshots-value \
+      src/main/resources/pdc-snapshot.avsc
+
 ###############################################################################
 # Summary
 ###############################################################################
