@@ -13,7 +13,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class AlertLeadTimeKafkaSourceTest {
+class AlertLeadTimeKafkaSourceTest {
     @Test
     void buildSetsUidOnSourceAndDeadLetterSplitOnly() {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
