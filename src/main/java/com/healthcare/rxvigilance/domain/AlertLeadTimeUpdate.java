@@ -1,4 +1,3 @@
 package com.healthcare.rxvigilance.domain;
 
-public record AlertLeadTimeUpdate() {
-}
+public record AlertLeadTimeUpdate(String drugClassAndChannel, int alertLeadDays) { }

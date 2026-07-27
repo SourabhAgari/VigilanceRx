@@ -1,4 +1,3 @@
 package com.healthcare.rxvigilance.domain;
 
-public class DrugClassRefUpdate {
-}
+public record DrugClassRefUpdate (String ndcCode, DrugClassRef drugClassRef) {}
