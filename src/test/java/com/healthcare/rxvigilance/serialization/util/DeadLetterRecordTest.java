@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class DeadLetterRecordTest {
+class DeadLetterRecordTest {
     @Test
     void fromExtractsRawBytesAndErrorMessageRegardlessOfSourceType() {
         byte[] rawBytes = {1, 2, 3};
@@ -22,16 +22,16 @@ public class DeadLetterRecordTest {
 
     @Test
     void equalsIsReflexive() {
-        DeadLetterRecord record = new DeadLetterRecord(new byte[]{1, 2, 3}, "err");
+        DeadLetterRecord deadLetterRecord = new DeadLetterRecord(new byte[]{1, 2, 3}, "err");
 
-        assertThat(record).isEqualTo(record);
+        assertThat(deadLetterRecord).isEqualTo(deadLetterRecord);
     }
 
     @Test
     void equalsReturnsFalseForDifferentType() {
-        DeadLetterRecord record = new DeadLetterRecord(new byte[]{1, 2, 3}, "err");
+        DeadLetterRecord deadLetterRecord = new DeadLetterRecord(new byte[]{1, 2, 3}, "err");
 
-        assertThat(record.equals("not a DeadLetterRecord")).isFalse();
+        assertThat(deadLetterRecord.equals("not a DeadLetterRecord")).isFalse();
     }
 
     @Test
@@ -40,14 +40,14 @@ public class DeadLetterRecordTest {
         DeadLetterRecord second = new DeadLetterRecord(new byte[]{1, 2, 3}, "err");
 
         assertThat(first).isEqualTo(second);
-        assertThat(first.hashCode()).isEqualTo(second.hashCode());
+        assertThat(first.hashCode()).hasSameHashCodeAs(second.hashCode());
     }
 
     @Test
     void toStringIncludesRawBytesAndErrorMessage() {
-        DeadLetterRecord record = new DeadLetterRecord(new byte[]{1, 2, 3}, "bad bytes");
+        DeadLetterRecord deadLetterRecord = new DeadLetterRecord(new byte[]{1, 2, 3}, "bad bytes");
 
-        assertThat(record.toString())
+        assertThat(deadLetterRecord.toString())
                 .contains("bad bytes")
                 .contains("[1, 2, 3]");
     }

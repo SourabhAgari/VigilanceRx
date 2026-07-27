@@ -62,8 +62,8 @@ public final class AlertKafkaSinks {
         return KafkaRecordSerializationSchema.<DeadLetterRecord>builder()
                 .setTopic(topic)
                 .setValueSerializationSchema(DeadLetterRecord::rawBytes)
-                .setHeaderProvider(record -> new RecordHeaders()
-                        .add("error-message", record.errorMessage().getBytes(StandardCharsets.UTF_8)))
+                .setHeaderProvider(deadLetterRecord -> new RecordHeaders()
+                        .add("error-message", deadLetterRecord.errorMessage().getBytes(StandardCharsets.UTF_8)))
                 .build();
     }
 

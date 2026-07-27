@@ -59,9 +59,9 @@ class AlertKafkaSinksTest {
         KafkaRecordSerializationSchema<DeadLetterRecord> schema =
                 AlertKafkaSinks.deadLetterRecordSerializer("dead-letter");
 
-        DeadLetterRecord record = new DeadLetterRecord(new byte[]{1, 2, 3}, "bad magic byte");
+        DeadLetterRecord deadLetterRecord = new DeadLetterRecord(new byte[]{1, 2, 3}, "bad magic byte");
 
-        ProducerRecord<byte[], byte[]> producerRecord = schema.serialize(record, new NoOpSinkContext(), null);
+        ProducerRecord<byte[], byte[]> producerRecord = schema.serialize(deadLetterRecord, new NoOpSinkContext(), null);
 
         assertThat(producerRecord.topic()).isEqualTo("dead-letter");
         assertThat(producerRecord.value()).isEqualTo(new byte[]{1, 2, 3});
