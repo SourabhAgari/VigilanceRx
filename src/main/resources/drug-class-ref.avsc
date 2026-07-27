@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "name": "DrugClassRef",
+  "namespace": "com.healthcare.rxvigilance.avro",
+  "doc": "NDC -> chronic drug class + trackability; keyed by ndcCode (Kafka message key, not part of this schema)",
+  "fields": [
+    { "name": "drugClass", "type": "string" },
+    { "name": "trackable", "type": "boolean" }
+  ]
+}

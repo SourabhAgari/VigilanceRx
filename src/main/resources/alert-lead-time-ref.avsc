@@ -1,0 +1,9 @@
+{
+  "type": "record",
+  "name": "AlertLeadTimeRef",
+  "namespace": "com.healthcare.rxvigilance.avro",
+  "doc": "alert_lead_days for a (drug_class, dispensing_channel) pair; keyed by \"drugClass|channel\" (Kafka message key, not part of this schema)",
+  "fields": [
+    { "name": "alertLeadDays", "type": "int" }
+  ]
+}

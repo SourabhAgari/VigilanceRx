@@ -470,44 +470,72 @@ update per established practice (#60/#61 verification gate is
 ## Phase 5 — Sources & sinks
 
 - [x] #68 `RxFillEventKafkaSource` (watermark strategy applied at source)
-      — done 2026-07-26: three chained operators — `KafkaSource<DeserializationResult>`
-      via `env.fromSource(..., WatermarkStrategy.noWatermarks(), ...)`, then a
-      package-private `DeadLetterSplitFunction` (`ProcessFunction`) splitting
-      success → main `DataStream<RxFillEvent>` / failure → `DEAD_LETTER_TAG`
-      side output, then `.assignTimestampsAndWatermarks(RxFillWatermarkStrategy
-      .create(watermarkConfig))` — this ordering is required because the
-      source's raw output type (`DeserializationResult`) can't carry a
-      `WatermarkStrategy<RxFillEvent>`, and dead-letter records have no
-      `fillDate` to watermark on anyway; no shuffle/keyBy happens before the
-      watermark-assignment step, so this is operationally identical to
-      applying watermarks directly at the source. All three operators have
-      explicit `.uid(...)` (CLAUDE.md §4). `kafka.starting.offsets`,
-      `kafka.topic.rx-fill-events`, `kafka.consumer.group.id` all configurable
-      via `ParameterTool` (defaults: earliest / rx-fill-events /
-      rx-vigilance-flink — the last must stay prefixed `rx-vigilance` per
-      Terraform's `read-consumer-group` PREFIXED ACL). `KafkaConnectionConfig`
+      — done 2026-07-26, reworked 2026-07-26 (see #69 below): originally built
+      as its own concrete `KafkaSource<DeserializationResult>` +
+      package-private `DeadLetterSplitFunction` + hand-written
+      `RxFillEventKryoSerializer`/`DeserializationResultKryoSerializer`.
+      While building #69, that shape was reopened and unified onto the same
+      reusable `KafkaTypedSourceBuilder<T>` all three sources now use (D23) —
+      `RxFillEventSource.build()` is now a ~15-line configuration of the
+      shared builder (topic, `RxFillEventAvroMapper`, dead-letter tag), not a
+      bespoke pipeline. The original watermark-ordering reasoning still
+      holds and is unchanged: the builder's raw source output
+      (`KafkaSourceResult<T>`) can't carry a `WatermarkStrategy<RxFillEvent>`
+      and dead-letter records have no `fillDate` to watermark on, so
+      `RxFillEventSource` calls `.assignTimestampsAndWatermarks(...)` itself,
+      once, immediately after the shared builder returns — no shuffle/keyBy
+      happens in between, so this remains operationally identical to
+      applying watermarks directly at the source. `KafkaConnectionConfig`
       (#60) extended with `securityProtocol`/`saslMechanism` fields that
       `application-gke.properties` already defined but nothing previously
-      read — closed via `securityProperties()`, only populated when
-      `hasSaslCredentials()`.
-      Surfaced a real, project-wide issue: Flink 1.18's bundled Kryo (2.24.0)
-      cannot serialize Java records at all — `Unsafe.objectFieldOffset()`
-      (used by Kryo's default `FieldSerializer`) throws
-      `UnsupportedOperationException` on any record field, and Flink's
-      `TypeExtractor` doesn't recognize records as POJOs, so it falls back to
-      Kryo for any record-typed stream element. Resolved via D22. Also fixed
-      mid-task: `mvn -B sonar:sonar` broke Sonar's own JRE auto-provisioning
-      wall unrelated to this task (network flakiness, not a code defect —
-      no ledger action needed); Surefire's `--add-opens=java.base/java.util`
-      (needed for Kryo's reflection even on non-record types) had to be
-      wired via JaCoCo's late-bound `@{jacocoArgLine}` property, not
-      `${argLine}` — the early-bound form silently defeated JaCoCo's own
-      `prepare-agent` property injection. 100% branch coverage on
-      `RxFillEventKafkaSource`, `RxFillEventKryoSerializer`,
-      `DeserializationResultKryoSerializer`; `mvn clean verify` green
-      (27 classes analyzed).
-- [ ] `ReferenceDataSources`: both broadcast sources
+      read.
+      This task is also where the Kryo/records incompatibility was first
+      discovered: Flink 1.18's bundled Kryo (2.24.0) cannot serialize Java
+      records at all — `Unsafe.objectFieldOffset()` throws on any record
+      field, and `TypeExtractor` doesn't recognize records as POJOs. First
+      resolved via D22 (hand-written per-type serializers); superseded by
+      D24 (generic reflection-based serializer) once #69 needed the same
+      treatment for two more record types. Also fixed mid-task: Sonar's own
+      JRE auto-provisioning network flakiness (unrelated to this task's
+      code); Surefire's `--add-opens=java.base/java.util` had to be wired
+      via JaCoCo's late-bound `@{jacocoArgLine}` property, not `${argLine}`.
+- [x] #69 `ReferenceDataSources`: both broadcast sources
       (`ndc-drug-class-ref`, `alert-lead-time-ref`)
+      — done 2026-07-26: built as a from-scratch SOLID/OCP redesign (D23)
+      spanning all three Kafka sources in this phase, not just the two
+      reference topics — user explicitly asked for an enterprise-grade,
+      closed-for-modification architecture partway through, which reopened
+      #68's already-merged code (see above). Final shape, three layers:
+      domain (`DrugClassRef`, `DrugClassRefUpdate`, `AlertLeadTimeUpdate` —
+      untouched by any of this); generic infrastructure, closed for
+      modification (`AvroValueMapper<T>` Strategy interface,
+      `AvroKeyValueDeSerializer<T>`, `TypedKafkaRecordDeserialisationSchema<T>`,
+      `KafkaSourceResult<T>`, `DeadLetterSplitFunction<T>`,
+      `RecordKryoSerializer`, `KafkaTypedSourceBuilder<T>`); per-topic
+      definitions, the only layer that grows (`RxFillEventAvroMapper`,
+      `DrugClassRefMapper`, `AlertLeadTimeMapper`, and the three thin
+      `*Source`/`*KafkaSource` classes). Adding a future topic needs two new
+      files and zero changes to the shared layer — verified concretely by
+      walking through a hypothetical 4th topic during design.
+      `ndc-drug-class-ref`/`alert-lead-time-ref` use Avro (not JSON — user's
+      explicit call, consistent with `rx-fill-events`), with the Kafka
+      message *key* carrying the lookup key (`ndcCode`, or the composite
+      `"drugClass|channel"` string matching `LEAD_TIME_DESCRIPTOR`'s MapState
+      key format exactly) and only the looked-up value Avro-encoded — this
+      matters for `cleanup.policy=compact` (D12): compaction dedupes by
+      Kafka key, so the key must be the real lookup key, not embedded in the
+      Avro value. New `.avsc` schemas (`drug-class-ref.avsc`,
+      `alert-lead-time-ref.avsc`) registered in `bootstrap-local-topics.sh`.
+      Two real bugs caught and fixed along the way: `KafkaAvroDeserializer
+      .deserialize(key, bytes)` was passing the Kafka message key into the
+      *topic* parameter slot (should be `null` — schema ID is
+      self-describing, no topic needed); `OutputTag<>("id")` without the
+      anonymous-subclass braces silently loses its generic type info
+      (`getClass()` can't recover `T` without the synthetic subclass),
+      breaking side-output routing the same way `.process()`'s output type
+      needs `.returns(...)` once `DeadLetterSplitFunction` became generic.
+      D24 records the Kryo generalization. 100% branch coverage across all
+      three layers; `mvn clean verify` green (40 classes analyzed).
 - [ ] `AlertKafkaSinks`: 4 sinks, exactly-once, operator UIDs
 - [ ] Testcontainers-Redpanda test: produce → source → collect; sink →
       consume round-trip
@@ -668,4 +696,6 @@ README; repo reproducible from clean clone + documented secrets
 | D19 | 2026-07-23 | RocksDB state TTL is a *configurable* value with a 400-day default (`state.ttl.days`), not a frozen unconfigurable constant as first proposed | Reversed mid-implementation: CLAUDE.md's "defined once" was initially read as "immutable," but the DRY guarantee only requires the default to exist in one place — forcing a code change + redeploy to retune an operational number is worse practice than making it a default-with-override, same as every other setting in this project |
 | D20 | 2026-07-24 | `serialization/` deserializer kept as a single concrete class (`RxFillEventAvroDeserializer`), not a generic Strategy-pattern engine or a shared interface — both were built, discussed, and reverted | Only one Avro-backed deserializer is currently spec'd (the two broadcast topics have no registered schema); the generic engine and the interface each cost real clarity in a learning-first codebase for a reuse case that doesn't exist yet — revisit if/when a second concrete Avro deserializer is actually needed |
 | D21 | 2026-07-25 | Watermark thresholds (`forBoundedOutOfOrderness` duration, `withIdleness` duration) sourced from a new `WatermarkConfig` record via `ParameterTool`, not literals on `RxFillWatermarkStrategy` — same `fromParams`/compact-constructor pattern as `KafkaConnectionConfig`/`CheckpointConfig`/`StateBackEndConfig` (D18) | User: "nothing must be hardcoded, everything must come from the environment variable" — an explicit, general instruction, not scoped to one class; applies the same reasoning already established by D19 (state TTL) to the watermark durations, closing the one remaining hardcoded-threshold gap in Phase 4 |
-| D22 | 2026-07-26 | Domain records that cross a Flink serialization boundary (`RxFillEvent`, `DeserializationResult` now; `AdherenceState`/`CoverageInterval`/alert types expected in Phase 6/7) get a small hand-written `com.esotericsoftware.kryo.Serializer<T>` per type, registered via `ExecutionConfig.registerTypeWithKryoSerializer(...)` — not a full custom `TypeInformation`/`TypeSerializer`, and not converting domain records to mutable POJOs | Flink 1.18's bundled Kryo (2.24.0, via `chill-java`) cannot serialize records at all — `FieldSerializer`'s `Unsafe.objectFieldOffset()` throws on any record field, and `TypeExtractor` doesn't recognize records as POJOs. A full custom `TypeSerializer` (checkpoint schema-evolution machinery) is more than this project needs; converting records to mutable POJOs would reverse CLAUDE.md §7's explicit "records for domain objects" standard across every domain class already built. Hand-written Kryo serializers keep `domain/` completely Flink-import-free (§4) at a small, repeatable per-type cost |
+| D22 | 2026-07-26 | Domain records that cross a Flink serialization boundary get a small hand-written `com.esotericsoftware.kryo.Serializer<T>` per type, registered via `ExecutionConfig.registerTypeWithKryoSerializer(...)` | Flink 1.18's bundled Kryo (2.24.0, via `chill-java`) cannot serialize records at all — `FieldSerializer`'s `Unsafe.objectFieldOffset()` throws on any record field, and `TypeExtractor` doesn't recognize records as POJOs. **Superseded by D24** the same day, once #69 needed the identical treatment for two more record types and a hand-written-per-type approach started costing real duplication — kept here for the original diagnosis, which D24 still relies on |
+| D23 | 2026-07-26 | All three Kafka sources in Phase 5 (`rx-fill-events`, `ndc-drug-class-ref`, `alert-lead-time-ref`) rebuilt on one shared, closed-for-modification architecture: `AvroValueMapper<T>` (Strategy interface, per-topic mapping logic) + `AvroKeyValueDeSerializer<T>` + `TypedKafkaRecordDeserialisationSchema<T>` + `KafkaSourceResult<T>` + `DeadLetterSplitFunction<T>` + `KafkaTypedSourceBuilder<T>` (Builder pattern) — all generic, none topic-specific. Per-topic code is only ever a new `AvroValueMapper<T>` implementation + a thin `*Source` class configuring the shared builder. This reopened #68's already-merged `RxFillEventKafkaSource` to unify it onto the same pattern rather than leaving it on a bespoke one-off shape | User: "let's start from scratch... use the enterprise reusable patterns followed by top orgs which follows OOP and SOLID principle... a class created must be not open for modifications" — explicit instruction, given after the original #69 design (separate concrete `DrugClassRefAvroDeserializer`/`AlertLeadTimeAvroDeserializer` classes, mirroring #68's shape) was flagged as producing near-duplicate classes and near-duplicate tests for every new topic. Verified concretely: a hypothetical 4th topic needs two new files and zero changes to any shared class |
+| D24 | 2026-07-26 | The per-type hand-written Kryo serializers from D22 are replaced by one generic, reflection-based `RecordKryoSerializer` (uses `java.lang.reflect.RecordComponent` + the record's canonical constructor, works for *any* record type via `kryo.writeClassAndObject`/`readClassAndObject` on each component) | Building #69's two reference-data record types the D22 way would have meant two more hand-written serializers, each ~20 lines of near-identical boilerplate — exactly the "revisit if/when needed again" signal. A single generic serializer, registered per-type with a one-line `registerTypeWithKryoSerializer(X.class, RecordKryoSerializer.class)` call, eliminates the boilerplate permanently for every current and future record, including nested ones (`DrugClassRef` nested inside `DrugClassRefUpdate` needed its own registration too — nesting doesn't get inherited automatically) |
