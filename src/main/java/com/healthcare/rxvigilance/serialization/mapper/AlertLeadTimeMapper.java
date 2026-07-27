@@ -1,7 +1,6 @@
 package com.healthcare.rxvigilance.serialization.mapper;
 
 import com.healthcare.rxvigilance.domain.AlertLeadTimeUpdate;
-import com.healthcare.rxvigilance.domain.RxFillEvent;
 import org.apache.avro.generic.GenericRecord;
 
 public class AlertLeadTimeMapper implements AvroValueMapper<AlertLeadTimeUpdate> {

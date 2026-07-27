@@ -16,7 +16,7 @@ import org.apache.flink.util.OutputTag;
 
 public final class RxFillEventSource {
     public static final OutputTag<KafkaSourceResult<RxFillEvent>> DEAD_LETTER_TAG =
-            new OutputTag<>("rx-fill-events-dead-letter");
+            new OutputTag<>("rx-fill-events-dead-letter") { };
 
     private RxFillEventSource() {}
 

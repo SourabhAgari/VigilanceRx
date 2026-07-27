@@ -17,7 +17,7 @@ public class AvroKeyValueDeSerializer<T> {
 
     public KafkaSourceResult<T> deserialize(String key, byte[] valueBytes){
         try {
-            GenericRecord genericRecord = (GenericRecord) deserializer.deserialize(key, valueBytes);
+            GenericRecord genericRecord = (GenericRecord) deserializer.deserialize(null, valueBytes);
             return KafkaSourceResult.success(mapper.map(key, genericRecord));
         }  catch (SerializationException | ClassCastException | IllegalArgumentException | NullPointerException e) {
             return KafkaSourceResult.failure(valueBytes, e.getMessage());

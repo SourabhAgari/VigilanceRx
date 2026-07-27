@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,6 +41,8 @@ class JobConfigTest {
         assertThat(config.getKafkaConfig().schemaRegistryUrl()).isEqualTo("http://localhost:8081");
         assertThat(config.getCheckpointConfig().checkpointDirectory()).isEqualTo("file:///tmp/rx-vigilance-checkpoints");
         assertThat(config.getStateBackEndConfig().ttlDays()).isEqualTo(400);
+        assertThat(config.getWatermarkConfig().outOfOrderness()).isEqualTo(Duration.ofHours(24));
+        assertThat(config.getWatermarkConfig().idleness()).isEqualTo(Duration.ofMinutes(5));
     }
 
     @Test

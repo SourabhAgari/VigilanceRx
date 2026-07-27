@@ -168,6 +168,14 @@ register_schema \
     lapsed-alerts-value \
     src/main/resources/lapsed-alert.avsc
 
+register_schema \
+      ndc-drug-class-ref-value \
+      src/main/resources/drug-class-ref.avsc
+
+register_schema \
+      alert-lead-time-ref-value \
+      src/main/resources/alert-lead-time-ref.avsc
+
 ###############################################################################
 # Summary
 ###############################################################################

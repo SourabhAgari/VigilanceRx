@@ -2,7 +2,6 @@ package com.healthcare.rxvigilance.serialization.mapper;
 
 import com.healthcare.rxvigilance.domain.DrugClassRef;
 import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
-import com.healthcare.rxvigilance.domain.RxFillEvent;
 import org.apache.avro.generic.GenericRecord;
 
 public class DrugClassRefMapper implements AvroValueMapper<DrugClassRefUpdate> {
