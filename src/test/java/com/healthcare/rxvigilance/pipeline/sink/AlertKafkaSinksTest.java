@@ -4,7 +4,7 @@ import com.healthcare.rxvigilance.config.KafkaConnectionConfig;
 import com.healthcare.rxvigilance.domain.GapRiskAlert;
 import com.healthcare.rxvigilance.domain.LapsedAlert;
 import com.healthcare.rxvigilance.domain.PdcSnapshot;
-import com.healthcare.rxvigilance.serialization.util.DeadLetterRecord;
+import com.healthcare.rxvigilance.serde.util.DeadLetterRecord;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;

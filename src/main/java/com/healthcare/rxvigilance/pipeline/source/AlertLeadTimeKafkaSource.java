@@ -2,9 +2,9 @@ package com.healthcare.rxvigilance.pipeline.source;
 
 import com.healthcare.rxvigilance.config.KafkaConnectionConfig;
 import com.healthcare.rxvigilance.domain.AlertLeadTimeUpdate;
-import com.healthcare.rxvigilance.serialization.KafkaSourceResult;
-import com.healthcare.rxvigilance.serialization.KafkaTypedSourceBuilder;
-import com.healthcare.rxvigilance.serialization.mapper.AlertLeadTimeMapper;
+import com.healthcare.rxvigilance.serde.KafkaSourceResult;
+import com.healthcare.rxvigilance.serde.KafkaTypedSourceBuilder;
+import com.healthcare.rxvigilance.serde.mapper.AlertLeadTimeMapper;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.utils.ParameterTool;
