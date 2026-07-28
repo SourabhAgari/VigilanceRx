@@ -536,8 +536,56 @@ update per established practice (#60/#61 verification gate is
       needs `.returns(...)` once `DeadLetterSplitFunction` became generic.
       D24 records the Kryo generalization. 100% branch coverage across all
       three layers; `mvn clean verify` green (40 classes analyzed).
-- [ ] `AlertKafkaSinks`: 4 sinks, exactly-once, operator UIDs
-- [ ] Testcontainers-Redpanda test: produce → source → collect; sink →
+- [x] #70 `AlertKafkaSinks`: 4 sinks, exactly-once, operator UIDs
+      — done 2026-07-27: same layered, closed-for-modification approach as
+      #69's source rebuild (D23), applied to the write side. Shared/generic
+      layer: `AvroValueSerializer<T>` (Strategy interface, the write-side
+      mirror of `AvroValueMapper<T>`), `AvroRecordSerializer<T>` (owns
+      `KafkaAvroSerializer`, delegates to the strategy), `TypedAvroSerializationSchema<T>`
+      (Flink `SerializationSchema<T>` adapter), `KafkaTypedSinkBuilder<T>`
+      (Builder wrapping `KafkaSink.<T>builder()` + Flink's own
+      `KafkaRecordSerializationSchema.builder()`, `DeliveryGuarantee
+      .EXACTLY_ONCE` + `"rx-vigilance-" + topic` transactional ID, defensive
+      `RecordKryoSerializer` registration for `T`). Per-topic layer:
+      `GapRiskAlertAvroSerializer`/`LapsedAlertAvroSerializer`/
+      `PdcSnapshotAvroSerializer` (one per alert type) plus `AlertKafkaSinks`
+      itself — one class, three thin factory methods over the shared
+      builder, matching spec.md's explicit `sink/AlertKafkaSinks.java`
+      naming (not four separate classes the way sources were split — spec
+      names this one file, unlike the source side where per-topic splitting
+      was this project's own OCP proposal, not spec-mandated).
+      `dead-letter` is genuinely structurally different, not just a fourth
+      `T`: on failure, `KafkaSourceResult<T>.value()` is always null
+      regardless of `T`, so a new non-generic `DeadLetterRecord(byte[]
+      rawBytes, String errorMessage)` bridges all three sources' distinct
+      failure types into one shape. Re-encoding already-undecodable bytes
+      as Avro would be counterproductive, so this sink bypasses
+      `KafkaTypedSinkBuilder` entirely — raw bytes as the Kafka value
+      (`DeadLetterRecord::rawBytes`), `errorMessage` as a Kafka record
+      header via `HeaderProvider`, using Flink's own
+      `KafkaRecordSerializationSchema.builder()` directly.
+      New `pdc-snapshot.avsc` created (didn't exist yet — `GapRiskAlert`/
+      `LapsedAlert` had schemas, `PdcSnapshot`'s D16 resolution never got
+      one), registered in `bootstrap-local-topics.sh`.
+      Deliberate asymmetry from the read side, confirmed by tracing the
+      actual exception type through a live probe: `AvroKeyValueDeSerializer`
+      catches decode failures (bad *data*, dead-letter is correct)
+      but `AvroRecordSerializer`/`TypedAvroSerializationSchema` catch
+      nothing on encode — a `SerializationException` there almost always
+      means the registry itself is unreachable (an infrastructure problem,
+      not bad data), so it propagates and lets Flink's normal checkpoint/
+      restart fault-tolerance handle it, rather than silently dropping a
+      valid alert.
+      D25 records the Sonar coverage-exclusion decision for the three
+      per-alert `loadSchema()` methods' `catch (IOException)` blocks —
+      confirmed via direct probing that Avro's `Schema.Parser` converts
+      both a missing resource and malformed content into its own unchecked
+      `SchemaParseException` internally, never a raw `IOException`, so the
+      catch exists only to satisfy the checked-exception rules of a static
+      field initializer and is not reachable through any realistic failure.
+      100% branch coverage elsewhere; `mvn clean verify` green
+      (48 classes analyzed).
+- [ ] #71 Testcontainers-Redpanda test: produce → source → collect; sink →
       consume round-trip
 
 **Exit criteria**: container tests green locally
@@ -699,3 +747,5 @@ README; repo reproducible from clean clone + documented secrets
 | D22 | 2026-07-26 | Domain records that cross a Flink serialization boundary get a small hand-written `com.esotericsoftware.kryo.Serializer<T>` per type, registered via `ExecutionConfig.registerTypeWithKryoSerializer(...)` | Flink 1.18's bundled Kryo (2.24.0, via `chill-java`) cannot serialize records at all — `FieldSerializer`'s `Unsafe.objectFieldOffset()` throws on any record field, and `TypeExtractor` doesn't recognize records as POJOs. **Superseded by D24** the same day, once #69 needed the identical treatment for two more record types and a hand-written-per-type approach started costing real duplication — kept here for the original diagnosis, which D24 still relies on |
 | D23 | 2026-07-26 | All three Kafka sources in Phase 5 (`rx-fill-events`, `ndc-drug-class-ref`, `alert-lead-time-ref`) rebuilt on one shared, closed-for-modification architecture: `AvroValueMapper<T>` (Strategy interface, per-topic mapping logic) + `AvroKeyValueDeSerializer<T>` + `TypedKafkaRecordDeserialisationSchema<T>` + `KafkaSourceResult<T>` + `DeadLetterSplitFunction<T>` + `KafkaTypedSourceBuilder<T>` (Builder pattern) — all generic, none topic-specific. Per-topic code is only ever a new `AvroValueMapper<T>` implementation + a thin `*Source` class configuring the shared builder. This reopened #68's already-merged `RxFillEventKafkaSource` to unify it onto the same pattern rather than leaving it on a bespoke one-off shape | User: "let's start from scratch... use the enterprise reusable patterns followed by top orgs which follows OOP and SOLID principle... a class created must be not open for modifications" — explicit instruction, given after the original #69 design (separate concrete `DrugClassRefAvroDeserializer`/`AlertLeadTimeAvroDeserializer` classes, mirroring #68's shape) was flagged as producing near-duplicate classes and near-duplicate tests for every new topic. Verified concretely: a hypothetical 4th topic needs two new files and zero changes to any shared class |
 | D24 | 2026-07-26 | The per-type hand-written Kryo serializers from D22 are replaced by one generic, reflection-based `RecordKryoSerializer` (uses `java.lang.reflect.RecordComponent` + the record's canonical constructor, works for *any* record type via `kryo.writeClassAndObject`/`readClassAndObject` on each component) | Building #69's two reference-data record types the D22 way would have meant two more hand-written serializers, each ~20 lines of near-identical boilerplate — exactly the "revisit if/when needed again" signal. A single generic serializer, registered per-type with a one-line `registerTypeWithKryoSerializer(X.class, RecordKryoSerializer.class)` call, eliminates the boilerplate permanently for every current and future record, including nested ones (`DrugClassRef` nested inside `DrugClassRefUpdate` needed its own registration too — nesting doesn't get inherited automatically) |
+| D25 | 2026-07-27 | `sonar.coverage.exclusions` extended to `GapRiskAlertAvroSerializer.java`/`LapsedAlertAvroSerializer.java`/`PdcSnapshotAvroSerializer.java` — specifically for their `loadSchema()` methods' `catch (IOException)` blocks, unlike D14/D17 which excluded genuinely zero-logic files entirely | Confirmed via a direct runtime probe (not assumed): Avro's `Schema.Parser.parse(InputStream)` converts *both* a missing classpath resource and malformed schema content into its own unchecked `SchemaParseException` internally — it never lets a raw `IOException` escape. The catch block only exists because `loadSchema()` is called from a `private static final Schema SCHEMA = loadSchema();` field initializer, which can't declare `throws IOException` (checked exceptions can't escape a static initializer) — so it's required boilerplate for a path that doesn't fire under any realistic failure. Unlike D14/D17, this trades away real coverage credit for `serialize()` (which *is* tested) since Sonar's exclusion mechanism has no finer granularity than whole-file |
+| D26 | 2026-07-28 | `AvroValueMapper<T>`/`AvroValueSerializer<T>` (the per-topic GenericRecord↔domain-object Strategy pair from D23) renamed to `AvroRecordDecoder<T>` (`T decode(String key, GenericRecord rec)`) / `AvroRecordEncoder<T>` (`GenericRecord encode(T value)`) | User flagged the original names as not meaningful — `AvroValueMapper` vs `AvroValueSerializer` don't read as an inverse pair and don't convey direction. Root cause: both interfaces operate purely at the `GenericRecord`↔domain-object boundary, never touching bytes — reusing "Serializer" there collides in spirit with `AvroKeyValueSerializer`/`AvroKeyValueDeSerializer`, which already own that word one layer down for the byte-level Confluent wrapping. Encoder/Decoder was chosen over a Reader/Writer or explicit Mapper-pair alternative (both presented) as the standard, unambiguous-direction pair for structured-representation conversion, reserving Serializer/Deserializer exclusively for the byte-level classes |

@@ -1,8 +1,8 @@
 package com.healthcare.rxvigilance.watermark;
 
 import com.healthcare.rxvigilance.config.WatermarkConfig;
-import com.healthcare.rxvigilance.domain.Channel;
-import com.healthcare.rxvigilance.domain.EventType;
+import com.healthcare.rxvigilance.domain.enums.Channel;
+import com.healthcare.rxvigilance.domain.enums.EventType;
 import com.healthcare.rxvigilance.domain.RxFillEvent;
 import org.apache.flink.api.common.eventtime.TimestampAssigner;
 import org.apache.flink.api.common.eventtime.Watermark;

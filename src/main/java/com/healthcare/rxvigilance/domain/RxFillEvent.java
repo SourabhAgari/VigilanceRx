@@ -1,5 +1,8 @@
 package com.healthcare.rxvigilance.domain;
 
+import com.healthcare.rxvigilance.domain.enums.Channel;
+import com.healthcare.rxvigilance.domain.enums.EventType;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 

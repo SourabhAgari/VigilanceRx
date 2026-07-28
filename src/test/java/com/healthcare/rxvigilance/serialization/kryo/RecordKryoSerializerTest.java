@@ -5,6 +5,8 @@ import com.esotericsoftware.kryo.KryoException;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import com.healthcare.rxvigilance.domain.*;
+import com.healthcare.rxvigilance.domain.enums.Channel;
+import com.healthcare.rxvigilance.domain.enums.EventType;
 import org.junit.jupiter.api.Test;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 
