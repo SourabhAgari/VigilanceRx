@@ -1,8 +1,7 @@
-package com.healthcare.rxvigilance.serialization;
+package com.healthcare.rxvigilance.serialization.decode;
 
 import com.healthcare.rxvigilance.domain.DrugClassRef;
 import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
-import com.healthcare.rxvigilance.serialization.decode.AvroKeyValueDeSerializer;
 import com.healthcare.rxvigilance.serialization.decode.decoders.DrugClassRefMapper;
 import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;

@@ -1,8 +1,7 @@
-package com.healthcare.rxvigilance.serialization;
+package com.healthcare.rxvigilance.serialization.encode;
 
 import com.healthcare.rxvigilance.domain.GapRiskAlert;
 import com.healthcare.rxvigilance.serialization.encode.encoders.GapRiskAlertAvroSerializer;
-import com.healthcare.rxvigilance.serialization.encode.AvroKeyValueSerializer;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;

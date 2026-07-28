@@ -1,9 +1,8 @@
-package com.healthcare.rxvigilance.serialization.codec;
+package com.healthcare.rxvigilance.serialization.decode.decoders;
 
 import com.healthcare.rxvigilance.domain.Channel;
 import com.healthcare.rxvigilance.domain.EventType;
 import com.healthcare.rxvigilance.domain.RxFillEvent;
-import com.healthcare.rxvigilance.serialization.decode.decoders.RxFillEventAvroMapper;
 import org.apache.avro.Conversions;
 import org.apache.avro.LogicalTypes;
 import org.apache.avro.Schema;
@@ -21,7 +20,7 @@ import java.time.Month;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class RxFillEventAvroMapperTest {
+class RxFillEventTest {
     private static final Conversions.DecimalConversion DECIMAL_CONVERSION = new Conversions.DecimalConversion();
     private final RxFillEventAvroMapper mapper = new RxFillEventAvroMapper();
 

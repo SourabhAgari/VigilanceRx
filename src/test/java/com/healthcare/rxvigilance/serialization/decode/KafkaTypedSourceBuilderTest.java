@@ -1,8 +1,7 @@
-package com.healthcare.rxvigilance.serialization;
+package com.healthcare.rxvigilance.serialization.decode;
 
 import com.healthcare.rxvigilance.config.KafkaConnectionConfig;
 import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
-import com.healthcare.rxvigilance.serialization.decode.KafkaTypedSourceBuilder;
 import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;

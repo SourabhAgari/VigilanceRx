@@ -1,6 +1,5 @@
-package com.healthcare.rxvigilance.serialization;
+package com.healthcare.rxvigilance.serialization.util;
 
-import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

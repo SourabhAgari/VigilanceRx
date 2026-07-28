@@ -1,8 +1,7 @@
-package com.healthcare.rxvigilance.serialization;
+package com.healthcare.rxvigilance.serialization.encode;
 
 import com.healthcare.rxvigilance.domain.GapRiskAlert;
 import com.healthcare.rxvigilance.serialization.encode.encoders.GapRiskAlertAvroSerializer;
-import com.healthcare.rxvigilance.serialization.encode.TypedAvroSerializationSchema;
 import org.apache.kafka.common.errors.SerializationException;
 import org.junit.jupiter.api.Test;
 

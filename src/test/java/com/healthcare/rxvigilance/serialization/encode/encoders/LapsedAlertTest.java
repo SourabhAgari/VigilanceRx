@@ -1,7 +1,6 @@
-package com.healthcare.rxvigilance.serialization.codec;
+package com.healthcare.rxvigilance.serialization.encode.encoders;
 
 import com.healthcare.rxvigilance.domain.LapsedAlert;
-import com.healthcare.rxvigilance.serialization.encode.encoders.LapsedAlertAvroSerializer;
 import org.apache.avro.generic.GenericRecord;
 import org.junit.jupiter.api.Test;
 
@@ -11,7 +10,7 @@ import java.time.Month;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
-class LapsedAlertAvroSerializerTest {
+class LapsedAlertTest {
 
     private final LapsedAlertAvroSerializer serializer = new LapsedAlertAvroSerializer();
 

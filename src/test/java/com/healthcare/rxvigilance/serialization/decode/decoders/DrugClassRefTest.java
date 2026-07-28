@@ -1,8 +1,7 @@
-package com.healthcare.rxvigilance.serialization.codec;
+package com.healthcare.rxvigilance.serialization.decode.decoders;
 
 import com.healthcare.rxvigilance.domain.DrugClassRef;
 import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
-import com.healthcare.rxvigilance.serialization.decode.decoders.DrugClassRefMapper;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.GenericRecordBuilder;
@@ -13,7 +12,7 @@ import java.io.InputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class DrugClassRefMapperTest {
+class DrugClassRefTest {
     private final DrugClassRefMapper mapper = new DrugClassRefMapper();
 
     @Test

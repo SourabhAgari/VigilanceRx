@@ -1,7 +1,6 @@
-package com.healthcare.rxvigilance.serialization;
+package com.healthcare.rxvigilance.serialization.decode;
 
 import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
-import com.healthcare.rxvigilance.serialization.decode.TypedAvroDeserialisationSchema;
 import com.healthcare.rxvigilance.serialization.decode.decoders.DrugClassRefMapper;
 import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
 import org.apache.flink.api.common.typeinfo.TypeHint;

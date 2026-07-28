@@ -1,7 +1,6 @@
-package com.healthcare.rxvigilance.serialization.codec;
+package com.healthcare.rxvigilance.serialization.encode.encoders;
 
 import com.healthcare.rxvigilance.domain.PdcSnapshot;
-import com.healthcare.rxvigilance.serialization.encode.encoders.PdcSnapshotAvroSerializer;
 import org.apache.avro.generic.GenericRecord;
 import org.junit.jupiter.api.Test;
 
@@ -10,7 +9,7 @@ import java.time.Month;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class PdcSnapshotAvroSerializerTest {
+class PdcSnapshotTest {
     private final PdcSnapshotAvroSerializer serializer = new PdcSnapshotAvroSerializer();
 
     @Test

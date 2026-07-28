@@ -1,9 +1,8 @@
-package com.healthcare.rxvigilance.serialization;
+package com.healthcare.rxvigilance.serialization.encode;
 
 import com.healthcare.rxvigilance.config.KafkaConnectionConfig;
 import com.healthcare.rxvigilance.domain.GapRiskAlert;
 import com.healthcare.rxvigilance.serialization.encode.encoders.GapRiskAlertAvroSerializer;
-import com.healthcare.rxvigilance.serialization.encode.KafkaTypedSinkBuilder;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;

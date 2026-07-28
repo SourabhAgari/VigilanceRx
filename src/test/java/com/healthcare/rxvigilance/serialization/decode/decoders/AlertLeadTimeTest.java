@@ -1,7 +1,6 @@
-package com.healthcare.rxvigilance.serialization.codec;
+package com.healthcare.rxvigilance.serialization.decode.decoders;
 
 import com.healthcare.rxvigilance.domain.AlertLeadTimeUpdate;
-import com.healthcare.rxvigilance.serialization.decode.decoders.AlertLeadTimeMapper;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.GenericRecordBuilder;
@@ -12,7 +11,7 @@ import java.io.InputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class AlertLeadTimeMapperTest {
+class AlertLeadTimeTest {
     private final AlertLeadTimeMapper mapper = new AlertLeadTimeMapper();
 
     @Test

@@ -1,7 +1,6 @@
-package com.healthcare.rxvigilance.serialization.deadletter;
+package com.healthcare.rxvigilance.serialization.util;
 
 import com.healthcare.rxvigilance.config.KafkaConnectionConfig;
-import com.healthcare.rxvigilance.serialization.util.KafkaSourceUtil;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.junit.jupiter.api.Test;
