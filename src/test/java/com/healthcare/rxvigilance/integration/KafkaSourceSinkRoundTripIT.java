@@ -2,9 +2,12 @@ package com.healthcare.rxvigilance.integration;
 
 import com.healthcare.rxvigilance.config.KafkaConnectionConfig;
 import com.healthcare.rxvigilance.config.WatermarkConfig;
+import com.healthcare.rxvigilance.domain.DrugClassRef;
+import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
 import com.healthcare.rxvigilance.domain.RxFillEvent;
 import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
+import com.healthcare.rxvigilance.pipeline.source.DrugClassRefKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.RxFillEventSource;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.avro.Conversions;
@@ -62,10 +65,9 @@ class KafkaSourceSinkRoundTripIT {
     }
 
     @AfterAll
-    static void stopFlinkCluster()  {
+    static void stopFlinkCluster() {
         flinkCluster.after();
     }
-
 
 
     @Test
@@ -93,9 +95,34 @@ class KafkaSourceSinkRoundTripIT {
         assertThat(results).containsExactly(event);
     }
 
+    @Test
+    void drugClassRefSourceRoundTrip() throws Exception {
+        String topic = "ndc-drug-class-ref-" + UUID.randomUUID();
+        String ndcCode = "00000000000";
+        DrugClassRefUpdate expected =
+                new DrugClassRefUpdate(ndcCode, new DrugClassRef("CHRONIC_CARDIAC", true));
+
+        produceDrugClassRef(topic, ndcCode, expected.drugClassRef());
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                RED_PANDA_CONTAINER.getBootstrapServers(),
+                RED_PANDA_CONTAINER.getSchemaRegistryAddress(),
+                null, null, null, null);
+        ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.ndc-drug-class-ref", topic));
+
+        DataStream<DrugClassRefUpdate> stream = DrugClassRefKafkaSource.build(env, kafkaConfig, params);
+
+        List<DrugClassRefUpdate> results = stream.executeAndCollect(1);
+
+        assertThat(results).containsExactly(expected);
+    }
+
     private void produceFillEvent(String topic, RxFillEvent event) throws Exception {
         Schema schema;
-        try(InputStream avsc = getClass().getResourceAsStream("/rx-fill-event.avsc")){
+        try (InputStream avsc = getClass().getResourceAsStream("/rx-fill-event.avsc")) {
             schema = new Schema.Parser().parse(avsc);
         }
         GenericRecord genericRecord = new GenericData.Record(schema);
@@ -125,5 +152,25 @@ class KafkaSourceSinkRoundTripIT {
             producer.send(new ProducerRecord<>(topic, event.claimId(), genericRecord)).get();
         }
 
+    }
+
+    private void produceDrugClassRef(String topic, String ndcCode, DrugClassRef drugClassRef) throws Exception {
+        Schema schema;
+        try (InputStream avsc = getClass().getResourceAsStream("/drug-class-ref.avsc")) {
+            schema = new Schema.Parser().parse(avsc);
+        }
+        GenericRecord genericRecord = new GenericData.Record(schema);
+        genericRecord.put("drugClass", drugClassRef.drugClass());
+        genericRecord.put("trackable", drugClassRef.trackable());
+
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, RED_PANDA_CONTAINER.getBootstrapServers());
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
+        props.put("schema.registry.url", RED_PANDA_CONTAINER.getSchemaRegistryAddress());
+
+        try (KafkaProducer<String, GenericRecord> producer = new KafkaProducer<>(props)) {
+            producer.send(new ProducerRecord<>(topic, ndcCode, genericRecord)).get();
+        }
     }
 }
