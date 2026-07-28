@@ -1,4 +1,4 @@
-package com.healthcare.rxvigilance.domain;
+package com.healthcare.rxvigilance.domain.enums;
 
 public enum EventType {
     FILL,

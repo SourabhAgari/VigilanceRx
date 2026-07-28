@@ -1,6 +1,8 @@
 package com.healthcare.rxvigilance.pipeline.coverage;
 
 import com.healthcare.rxvigilance.domain.*;
+import com.healthcare.rxvigilance.domain.enums.Channel;
+import com.healthcare.rxvigilance.domain.enums.EventType;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
