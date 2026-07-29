@@ -9,6 +9,7 @@ import com.healthcare.rxvigilance.pipeline.sink.AlertKafkaSinks;
 import com.healthcare.rxvigilance.pipeline.source.AlertLeadTimeKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.DrugClassRefKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.RxFillEventSource;
+import com.healthcare.rxvigilance.serialization.deadletter.DeadLetterRecord;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.avro.Conversions;
@@ -22,11 +23,13 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.AfterAll;
@@ -39,6 +42,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.Month;
@@ -335,5 +339,54 @@ class KafkaSourceSinkRoundTripIT {
         try (KafkaProducer<String, GenericRecord> producer = new KafkaProducer<>(props)) {
             producer.send(new ProducerRecord<>(topic, drugClassAndChannel, genericRecord)).get();
         }
+    }
+
+    private ConsumerRecord<String, byte[]> consumeOneRaw(String topic) {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, RED_PANDA_CONTAINER.getBootstrapServers());
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "verify-" + UUID.randomUUID());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+
+        try (KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(props)) {
+            consumer.subscribe(List.of(topic));
+            for (int attempt = 0; attempt < 20; attempt++) {
+                ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(500));
+                if (!records.isEmpty()) {
+                    return records.iterator().next();
+                }
+            }
+            throw new AssertionError("No record consumed from topic " + topic + " within timeout");
+        }
+    }
+
+    @Test
+    void deadLetterSinkRoundTrip() throws Exception {
+        String topic = "dead-letter-" + UUID.randomUUID();
+        byte[] rawBytes = "not-valid-avro".getBytes(StandardCharsets.UTF_8);
+        String errorMessage = "Schema mismatch on decode";
+        DeadLetterRecord deadLetter = new DeadLetterRecord(rawBytes, errorMessage);
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        env.enableCheckpointing(500);
+
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                RED_PANDA_CONTAINER.getBootstrapServers(),
+                RED_PANDA_CONTAINER.getSchemaRegistryAddress(),
+                null, null, null, null);
+        ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.dead-letter", topic));
+
+        env.fromElements(deadLetter)
+                .sinkTo(AlertKafkaSinks.deadLetterSink(env, kafkaConfig, params));
+        env.execute("dead-letter-sink-test");
+
+        ConsumerRecord<String, byte[]> consumerRecord = consumeOneRaw(topic);
+
+        assertThat(consumerRecord.value()).isEqualTo(rawBytes);
+        assertThat(consumerRecord.headers().lastHeader("error-message").value())
+                .isEqualTo(errorMessage.getBytes(StandardCharsets.UTF_8));
     }
 }

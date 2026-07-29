@@ -32,7 +32,7 @@ requires restoring it (one `terraform apply`).
 | 2 | Cloud connectivity smoke test | cloud | ☐ not started |
 | 3 | Domain model & interval logic | local | ✅ done 2026-07-23 |
 | 4 | Config, serialization, watermarks | local | ✅ done 2026-07-25 |
-| 5 | Sources & sinks | local | ☐ not started |
+| 5 | Sources & sinks | local | ✅ done 2026-07-29 |
 | 6 | Upstream broadcast filter | local | ☐ not started |
 | 7 | Adherence core — FILL path & timers | local | ☐ not started |
 | 8 | onTimer, LapsedAlert & REVERSAL path | local | ☐ not started |
@@ -585,10 +585,39 @@ update per established practice (#60/#61 verification gate is
       field initializer and is not reachable through any realistic failure.
       100% branch coverage elsewhere; `mvn clean verify` green
       (48 classes analyzed).
-- [ ] #71 Testcontainers-Redpanda test: produce → source → collect; sink →
+- [x] #71 Testcontainers-Redpanda test: produce → source → collect; sink →
       consume round-trip
+      — done 2026-07-29: `KafkaSourceSinkRoundTripIT` (`MiniClusterWithClientResource`
+      + Testcontainers `RedpandaContainer`, per CLAUDE.md §5), six round-trips —
+      all three Phase 5 sources (`RxFillEventSource` #68, `DrugClassRefKafkaSource`
+      + `AlertLeadTimeKafkaSource` #69) via a hand-built `KafkaProducer` +
+      `KafkaAvroSerializer` standing in for the real upstream producer, and all
+      four `AlertKafkaSinks` sinks #70 (`GapRiskAlert`/`LapsedAlert`/`PdcSnapshot`
+      via a shared `consumeOne()` raw-consumer helper; `DeadLetter` separately,
+      since it carries no Avro/schema-registry at all — raw bytes + a Kafka
+      header, verified with a plain `ByteArrayDeserializer` instead).
+      This phase was the first time any of this project's Kafka code ran
+      against a real broker/registry rather than a mock or harness, and it
+      found real defects no unit/harness test could have — see D28/D29.
+      Also fixed mid-task, none design decisions in their own right:
+      Maven Failsafe's `argLine` had no `--add-opens=java.base/java.util`/
+      `java.time` at all (Surefire got this fix back in #68; Failsafe is a
+      separate plugin block and never inherited it — same Kryo-vs-JPMS
+      disease as before, just a second untreated spot); `commons-lang3`
+      explicitly pinned to 3.17.0 (Testcontainers 2.x's `docker-java` needs
+      `ArrayFill`, added in 3.14.0, but Flink's `provided`-scope pull of
+      3.12.0 was winning Maven's nearest-wins mediation); `KafkaTypedSinkBuilder`
+      now sets `transaction.timeout.ms` (default 60000, `ParameterTool`-driven
+      per CLAUDE.md §4) explicitly rather than inheriting Flink's built-in
+      1-hour default, which some brokers reject outright — not the root
+      cause of the hang actually hit here (D29 was), but a real latent risk
+      independently worth closing; `AlertKafkaSinks.deadLetterSink()` does
+      **not** yet have this same fix — it builds its producer properties
+      independently of `KafkaTypedSinkBuilder` and was never touched, flagged
+      for whoever next revisits that sink.
+      `mvn verify -Dit.test=KafkaSourceSinkRoundTripIT` green, all six methods.
 
-**Exit criteria**: container tests green locally
+**Exit criteria**: container tests green locally — met, evidence above
 
 ---
 
@@ -750,3 +779,5 @@ README; repo reproducible from clean clone + documented secrets
 | D25 | 2026-07-27 | `sonar.coverage.exclusions` extended to `GapRiskAlertAvroSerializer.java`/`LapsedAlertAvroSerializer.java`/`PdcSnapshotAvroSerializer.java` — specifically for their `loadSchema()` methods' `catch (IOException)` blocks, unlike D14/D17 which excluded genuinely zero-logic files entirely | Confirmed via a direct runtime probe (not assumed): Avro's `Schema.Parser.parse(InputStream)` converts *both* a missing classpath resource and malformed schema content into its own unchecked `SchemaParseException` internally — it never lets a raw `IOException` escape. The catch block only exists because `loadSchema()` is called from a `private static final Schema SCHEMA = loadSchema();` field initializer, which can't declare `throws IOException` (checked exceptions can't escape a static initializer) — so it's required boilerplate for a path that doesn't fire under any realistic failure. Unlike D14/D17, this trades away real coverage credit for `serialize()` (which *is* tested) since Sonar's exclusion mechanism has no finer granularity than whole-file |
 | D26 | 2026-07-28 | `AvroValueMapper<T>`/`AvroValueSerializer<T>` (the per-topic GenericRecord↔domain-object Strategy pair from D23) renamed to `AvroRecordDecoder<T>` (`T decode(String key, GenericRecord rec)`) / `AvroRecordEncoder<T>` (`GenericRecord encode(T value)`) | User flagged the original names as not meaningful — `AvroValueMapper` vs `AvroValueSerializer` don't read as an inverse pair and don't convey direction. Root cause: both interfaces operate purely at the `GenericRecord`↔domain-object boundary, never touching bytes — reusing "Serializer" there collides in spirit with `AvroKeyValueSerializer`/`AvroKeyValueDeSerializer`, which already own that word one layer down for the byte-level Confluent wrapping. Encoder/Decoder was chosen over a Reader/Writer or explicit Mapper-pair alternative (both presented) as the standard, unambiguous-direction pair for structured-representation conversion, reserving Serializer/Deserializer exclusively for the byte-level classes |
 | D27 | 2026-07-28 | Top-level package `serde` renamed to `serialization` and restructured: `serde/mapper` → `serialization/codec` (holds `AvroRecordDecoder`/`AvroRecordEncoder` from D26); `serde/deserialization` → `serialization/decode` (+ `decode/decoders` for the per-topic `RxFillEventAvroMapper`/`DrugClassRefMapper`/`AlertLeadTimeMapper`); `serde/serialization` → `serialization/encode` (+ `encode/encoders` for the per-topic `*AvroSerializer` classes); `serde/kryo` → `serialization/kryo` (unchanged contents); `DeadLetterRecord`/`DeadLetterSplitFunction` moved out of the old `serde/util` grab-bag into a new `serialization/deadletter`. `KafkaSourceResult`/`KafkaSourceUtil` remain in `serialization/util` for now — not yet resolved where they belong (candidates: fold into `deadletter` since `KafkaSourceResult` is what `DeadLetterRecord`/`DeadLetterSplitFunction` consume, or move `KafkaSourceUtil` beside `config.KafkaConnectionConfig` since it only builds `OffsetsInitializer`/security `Properties` from Kafka connection config and has nothing to do with serialization at all) | User flagged the `serde` layout as not enterprise-grade. Root cause was twofold: (1) `serde` itself was never spec-aligned — `spec.md`'s "Project structure" section (line 400) names this package `serialization`, and the divergence was never recorded as a Decision Log entry, it just accumulated across D22–D26; (2) `serde/util` was a classic grab-bag (no cohesive responsibility) and `serde/mapper` was a stale name left over from before D26 renamed the types it holds from Mapper/Serializer to Decoder/Encoder. Verified: `mvn clean verify` green with zero remaining `rxvigilance.serde` references anywhere in `src/`, PR merged |
+| D28 | 2026-07-29 | Testcontainers bumped `1.19.8` → `2.0.5` (`testcontainers-redpanda`/`testcontainers-junit-jupiter` artifact IDs, per 2.x's module rename convention — `org.testcontainers.redpanda.RedpandaContainer`'s package is unchanged, so no source changes needed beyond `pom.xml`) | `#71`'s first `KafkaSourceSinkRoundTripIT` run failed with every Testcontainers Docker-detection strategy rejected by a `400 Bad Request`, confirmed via `-Dlog4j2.configurationFile` DEBUG logging to be `docker-java` (bundled in Testcontainers 1.x) hardcoding a request for Docker API version 1.32, which this machine's Docker Engine 29 (Docker Desktop 4.56) refuses outright. Documented, widely-hit break (`testcontainers-java` issues #11232/#11235): 1.20.x/1.21.x never fixed it: 2.0.2+ ships a `docker-java` that negotiates the API version with the daemon instead of assuming a fixed old one |
+| D29 | 2026-07-29 | `AvroKeyValueSerializer` (write side) now constructs `KafkaAvroSerializer` via the 2-arg `(SchemaRegistryClient, Map<String,?>)` constructor with `auto.register.schemas=true` and `schema.registry.url` explicitly set, instead of the 1-arg `(SchemaRegistryClient)` constructor it used before | `gapRiskAlertSinkRoundTrip` hung in an infinite Flink task-restart loop (196+ attempts observed before being killed) once checkpointing was enabled (checkpointing implicitly turns on Flink's retry-on-failure, unlike the source tests which never hit this). Decompiled `KafkaAvroSerializer`'s bytecode to confirm: the 1-arg constructor never calls `configure(...)`, so `autoRegisterSchema` — documented by Confluent as defaulting to `true` — was silently sitting at Java's untouched-`boolean` default of `false` instead, with no way to override it since no config map was ever passed at all. Every write to a topic without an already-registered schema failed with `404 Subject not found`, and retrying doesn't fix a permanently-misconfigured serializer, hence the infinite loop. This was invisible before #71 because `AlertKafkaSinksTest`/`KafkaTypedSinkBuilderTest` stub the schema registry client (never exercising this runtime path), and even real local runs are masked by `bootstrap-local-topics.sh` pre-registering schemas for the three known production topics (`gap-risk-alerts`/`lapsed-alerts`/`pdc-snapshots` — confirmed in Phase 0's own ledger note, `FULL_TRANSITIVE` on 3 subjects) — a topic whose schema isn't pre-registered would have hit this in production too, indistinguishable from a hang, with no error pointing at the cause |
