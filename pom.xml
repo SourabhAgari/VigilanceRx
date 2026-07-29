@@ -17,7 +17,7 @@
         <log4j.version>2.23.1</log4j.version>
         <junit.version>5.10.2</junit.version>
         <assertj.version>3.25.3</assertj.version>
-        <testcontainers.version>1.19.8</testcontainers.version>
+        <testcontainers.version>2.0.5</testcontainers.version>
         <maven.shade.version>3.5.1</maven.shade.version>
         <kafka.avro.serializer.version>7.7.1</kafka.avro.serializer.version>
         <sonar.organization>sourabhagari</sonar.organization>
@@ -139,15 +139,21 @@
         <!-- Testcontainers Redpanda for integration tests (spec: replaces testcontainers-kafka) -->
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>redpanda</artifactId>
+            <artifactId>testcontainers-redpanda</artifactId>
             <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <version>${testcontainers.version}</version>
             <scope>test</scope>
+        </dependency>
+        <!-- Test Container Fix -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.17.0</version>
         </dependency>
 
     </dependencies>
@@ -176,6 +182,12 @@
             <plugin>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>3.2.5</version>   <!-- picks up *IT.java in `verify` -->
+                <configuration>
+                    <argLine>
+                        --add-opens=java.base/java.util=ALL-UNNAMED
+                        --add-opens=java.base/java.time=ALL-UNNAMED
+                    </argLine>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>

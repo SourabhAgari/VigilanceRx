@@ -68,6 +68,10 @@ public class KafkaTypedSinkBuilder<T> {
 
         Properties producerProperties = KafkaSourceUtil.securityProperties(kafkaConfig);
 
+        // note: this needs to be set dynamically based on checkpoint behavior
+        producerProperties.setProperty("transaction.timeout.ms",
+                params.get("kafka.transaction.timeout.ms", "60000"));
+
         return KafkaSink.<T>builder()
                 .setBootstrapServers(kafkaConfig.brokers())
                 .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
