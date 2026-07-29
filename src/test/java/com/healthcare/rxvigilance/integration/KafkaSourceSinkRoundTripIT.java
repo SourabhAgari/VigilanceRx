@@ -2,15 +2,14 @@ package com.healthcare.rxvigilance.integration;
 
 import com.healthcare.rxvigilance.config.KafkaConnectionConfig;
 import com.healthcare.rxvigilance.config.WatermarkConfig;
-import com.healthcare.rxvigilance.domain.AlertLeadTimeUpdate;
-import com.healthcare.rxvigilance.domain.DrugClassRef;
-import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
-import com.healthcare.rxvigilance.domain.RxFillEvent;
+import com.healthcare.rxvigilance.domain.*;
 import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
+import com.healthcare.rxvigilance.pipeline.sink.AlertKafkaSinks;
 import com.healthcare.rxvigilance.pipeline.source.AlertLeadTimeKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.DrugClassRefKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.RxFillEventSource;
+import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.avro.Conversions;
 import org.apache.avro.LogicalTypes;
@@ -22,9 +21,13 @@ import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -146,6 +149,119 @@ class KafkaSourceSinkRoundTripIT {
         assertThat(results).containsExactly(expected);
     }
 
+    @Test
+    void gapRiskAlertSinkRoundTrip() throws Exception {
+        String topic = "gap-risk-alerts-" + UUID.randomUUID();
+        GapRiskAlert alert = new GapRiskAlert(
+                "alert-1", "member-1", "CHRONIC_CARDIAC",
+                LocalDate.of(2026, Month.FEBRUARY, 1), 7, System.currentTimeMillis());
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        env.enableCheckpointing(500);
+
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                RED_PANDA_CONTAINER.getBootstrapServers(),
+                RED_PANDA_CONTAINER.getSchemaRegistryAddress(),
+                null, null, null, null);
+        ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.gap-risk-alerts", topic));
+
+        env.fromElements(alert)
+                .sinkTo(AlertKafkaSinks.gapRiskAlertSink(env, kafkaConfig, params));
+        env.execute("gap-risk-alert-sink-test");
+
+        GenericRecord genericRecord = consumeOne(topic);
+
+        assertThat(genericRecord.get("alertId").toString()).hasToString(alert.alertId());
+        assertThat(genericRecord.get("memberId").toString()).hasToString(alert.memberId());
+        assertThat(genericRecord.get("drugClass").toString()).hasToString(alert.drugClass());
+        assertThat(LocalDate.ofEpochDay((Integer) genericRecord.get("expiresOn"))).isEqualTo(alert.expiresOn());
+        assertThat(genericRecord.get("leadDays")).isEqualTo(alert.leadDays());
+        assertThat(genericRecord.get("emittedAt")).isEqualTo(alert.emittedAt());
+    }
+
+    @Test
+    void lapsedAlertSinkRoundTrip() throws Exception {
+        String topic = "lapsed-alerts-" + UUID.randomUUID();
+        LapsedAlert alert = new LapsedAlert(
+                "alert-2", "member-2", "CHRONIC_CARDIAC",
+                LocalDate.of(2026, Month.FEBRUARY, 10), System.currentTimeMillis());
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        env.enableCheckpointing(500);
+
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                RED_PANDA_CONTAINER.getBootstrapServers(),
+                RED_PANDA_CONTAINER.getSchemaRegistryAddress(),
+                null, null, null, null);
+        ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.lapsed-alerts", topic));
+
+        env.fromElements(alert)
+                .sinkTo(AlertKafkaSinks.lapsedAlertSink(env, kafkaConfig, params));
+        env.execute("lapsed-alert-sink-test");
+
+        GenericRecord genericRecord = consumeOne(topic);
+
+        assertThat(genericRecord.get("alertId").toString()).hasToString(alert.alertId());
+        assertThat(genericRecord.get("memberId").toString()).hasToString(alert.memberId());
+        assertThat(genericRecord.get("drugClass").toString()).hasToString(alert.drugClass());
+        assertThat(LocalDate.ofEpochDay((Integer) genericRecord.get("lapsedOn"))).isEqualTo(alert.lapsedOn());
+        assertThat(genericRecord.get("emittedAt")).isEqualTo(alert.emittedAt());
+    }
+
+    @Test
+    void pdcSnapshotSinkRoundTrip() throws Exception {
+        String topic = "pdc-snapshots-" + UUID.randomUUID();
+        PdcSnapshot snapshot = new PdcSnapshot(
+                "member-3", "CHRONIC_CARDIAC", 45,
+                LocalDate.of(2026, Month.MARCH, 1), System.currentTimeMillis());
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+        env.enableCheckpointing(500);
+
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                RED_PANDA_CONTAINER.getBootstrapServers(),
+                RED_PANDA_CONTAINER.getSchemaRegistryAddress(),
+                null, null, null, null);
+        ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.pdc-snapshots", topic));
+
+        env.fromElements(snapshot)
+                .sinkTo(AlertKafkaSinks.pdcSnapshotSink(env, kafkaConfig, params));
+        env.execute("pdc-snapshot-sink-test");
+
+        GenericRecord genericRecord = consumeOne(topic);
+
+        assertThat(genericRecord.get("memberId").toString()).hasToString(snapshot.memberId());
+        assertThat(genericRecord.get("drugClass").toString()).hasToString(snapshot.drugClass());
+        assertThat(genericRecord.get("totalDaysCovered")).isEqualTo(snapshot.totalDaysCovered());
+        assertThat(LocalDate.ofEpochDay((Integer) genericRecord.get("currentSupplyEndDate"))).isEqualTo(snapshot.currentSupplyEndDate());
+        assertThat(genericRecord.get("emittedAt")).isEqualTo(snapshot.emittedAt());
+    }
+
+    private GenericRecord consumeOne(String topic) {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, RED_PANDA_CONTAINER.getBootstrapServers());
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "verify-" + UUID.randomUUID());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class.getName());
+        props.put("schema.registry.url", RED_PANDA_CONTAINER.getSchemaRegistryAddress());
+        props.put("specific.avro.reader", false);
+
+        try (KafkaConsumer<String, GenericRecord> consumer = new KafkaConsumer<>(props)) {
+            consumer.subscribe(List.of(topic));
+            for (int attempt = 0; attempt < 20; attempt++) {
+                ConsumerRecords<String, GenericRecord> records = consumer.poll(Duration.ofMillis(500));
+                if (!records.isEmpty()) {
+                    return records.iterator().next().value();
+                }
+            }
+            throw new AssertionError("No record consumed from topic " + topic + " within timeout");
+        }
+    }
 
     private void produceFillEvent(String topic, RxFillEvent event) throws Exception {
         Schema schema;
@@ -207,8 +323,8 @@ class KafkaSourceSinkRoundTripIT {
         try (InputStream avsc = getClass().getResourceAsStream("/alert-lead-time-ref.avsc")) {
             schema = new Schema.Parser().parse(avsc);
         }
-        GenericRecord record = new GenericData.Record(schema);
-        record.put("alertLeadDays", alertLeadDays);
+        GenericRecord genericRecord = new GenericData.Record(schema);
+        genericRecord.put("alertLeadDays", alertLeadDays);
 
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, RED_PANDA_CONTAINER.getBootstrapServers());
@@ -217,7 +333,7 @@ class KafkaSourceSinkRoundTripIT {
         props.put("schema.registry.url", RED_PANDA_CONTAINER.getSchemaRegistryAddress());
 
         try (KafkaProducer<String, GenericRecord> producer = new KafkaProducer<>(props)) {
-            producer.send(new ProducerRecord<>(topic, drugClassAndChannel, record)).get();
+            producer.send(new ProducerRecord<>(topic, drugClassAndChannel, genericRecord)).get();
         }
     }
 }

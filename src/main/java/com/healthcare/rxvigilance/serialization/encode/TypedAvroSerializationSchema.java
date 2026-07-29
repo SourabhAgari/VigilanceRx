@@ -22,7 +22,7 @@ public class TypedAvroSerializationSchema <T> implements SerializationSchema<T> 
     @Override
     public void open(InitializationContext context) throws Exception {
         SchemaRegistryClient client = new CachedSchemaRegistryClient(schemaRegistryUrl, SCHEMA_CACHE_CAPACITY);
-        this.avroRecordSerializer = new AvroKeyValueSerializer<>(client, serializer, topic);
+        this.avroRecordSerializer = new AvroKeyValueSerializer<>(client, serializer, topic,schemaRegistryUrl);
     }
 
     @Override

@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AvroKeyValueSerializerTest {
     private final SchemaRegistryClient registryClient = new MockSchemaRegistryClient();
     private final AvroKeyValueSerializer<GapRiskAlert> serializer = new AvroKeyValueSerializer<>(registryClient,
-            new GapRiskAlertAvroSerializer(),"gap-risk-alerts");
+            new GapRiskAlertAvroSerializer(),"gap-risk-alerts","mock://unused");
 
     @Test
     void serializeProducesRegistryDecodableBytes() throws IOException, RestClientException {
