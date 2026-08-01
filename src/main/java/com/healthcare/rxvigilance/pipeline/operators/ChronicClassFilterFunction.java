@@ -19,7 +19,7 @@ public class ChronicClassFilterFunction
         extends BroadcastProcessFunction<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent>
         implements CheckpointedFunction {
 
-    private static final MapStateDescriptor<String, DrugClassRef> NDC_CLASS_DESCRIPTOR =
+    public static final MapStateDescriptor<String, DrugClassRef> NDC_CLASS_DESCRIPTOR =
             new MapStateDescriptor<>("ndc-class-state", Types.STRING, TypeInformation.of(DrugClassRef.class));
     private static final ListStateDescriptor<RxFillEvent> BUFFER_DESCRIPTOR =
             new ListStateDescriptor<>("pre-broadcast-buffer",TypeInformation.of(RxFillEvent.class));
@@ -82,5 +82,9 @@ public class ChronicClassFilterFunction
             filterAndEmit(buffer,broadcastState,collector);
         }
         bufferState.clear();
+    }
+
+    public long droppedCount() {
+        return droppedCounter.getCount();
     }
 }
