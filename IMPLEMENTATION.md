@@ -33,7 +33,7 @@ requires restoring it (one `terraform apply`).
 | 3 | Domain model & interval logic | local | ✅ done 2026-07-23 |
 | 4 | Config, serialization, watermarks | local | ✅ done 2026-07-25 |
 | 5 | Sources & sinks | local | ✅ done 2026-07-29 |
-| 6 | Upstream broadcast filter | local | ☐ not started |
+| 6 | Upstream broadcast filter | local | ✅ done 2026-08-01 |
 | 7 | Adherence core — FILL path & timers | local | ☐ not started |
 | 8 | onTimer, LapsedAlert & REVERSAL path | local | ☐ not started |
 | 9 | Metrics, job wiring & integration test | local | ☐ not started |
@@ -623,16 +623,56 @@ update per established practice (#60/#61 verification gate is
 
 ## Phase 6 — Upstream broadcast filter
 
-- [ ] `ChronicClassFilterFunction` (`BroadcastProcessFunction`): discard if
+- [x] `ChronicClassFilterFunction` (`BroadcastProcessFunction`): discard if
       NDC not in tracked classes **or** not trackable
       (specialty/infusion, FR-9); forward enriched event (with resolved
       `drugClass`) otherwise
-- [ ] Buffering decision for events arriving before first reference broadcast
+      — done 2026-08-01: issue #78. `NDC_CLASS_DESCRIPTOR` (`MapState<String,
+      DrugClassRef>`) registered with `RecordKryoSerializer` (D24's pattern)
+      rather than left on Flink's default Kryo path — `DrugClassRef` is a
+      record, and Flink's type extraction can't recognize records as POJOs
+      (no JavaBean getters/setters), so it falls back to vanilla Kryo's
+      `FieldSerializer`, which can't handle records at all under Java 17
+      (D22's original finding, hit again here). New domain record
+      `EnrichedFillEvent(RxFillEvent event, String drugClass)` (D31 — wraps
+      rather than flattens) needed the same registration, plus `RxFillEvent`
+      separately, since Kryo registration doesn't propagate into nested
+      record fields (same lesson as `DrugClassRefUpdate`/`DrugClassRef`).
+      Operator UID intentionally not set yet — that happens at stream-wiring
+      time (`.process(...).uid(...)`), and no job-wiring class exists until
+      Phase 9; harness tests bypass `StreamExecutionEnvironment` entirely so
+      there's nothing to set it on right now. Intended UID:
+      `"chronic-class-filter"`, to be applied when Phase 9 wires this in.
+- [x] Buffering decision for events arriving before first reference broadcast
       → record in Decision Log
-- [ ] Harness tests: acute drug discarded; chronic + 0-refills kept;
+      — resolved as D30: buffer in operator list state (via
+      `CheckpointedFunction`/`OperatorStateStore`, since this operator runs
+      before `keyBy` — Flink's keyed-state API isn't valid here), flushed
+      once `NDC_CLASS_DESCRIPTOR` receives its first update. "Is broadcast
+      state empty" is checked live against the actual state on every
+      `processElement` call rather than tracked via a separate boolean flag
+      — a flag would desync from the real, checkpointed broadcast state
+      across a restart that happens mid-buffering.
+- [x] Harness tests: acute drug discarded; chronic + 0-refills kept;
       diabetes-classed specialty NDC discarded; drop-rate metric increments
+      — done 2026-08-01: `ChronicClassFilterFunctionTest`, non-keyed
+      `BroadcastOperatorTestHarness` + `CoBroadcastWithNonKeyedOperator`
+      (distinct from the keyed variant Phase 7's `AdherenceProcessFunction`
+      will need). Four tests: acute discard; chronic + 0-refills kept
+      (proves `refillsAuthorized` is never the filter signal); diabetes-
+      classed but `trackable=false` NDC discarded (proves FR-9's specialty
+      exclusion is a property of the NDC/reference data, not the fill
+      event's own `dispensingChanel` field); and the D30 cold-start
+      buffer-then-replay path explicitly exercised (event arrives before
+      any broadcast update, proven buffered not dropped, then correctly
+      emitted once the update lands). Drop-counter assertions folded into
+      the two discard tests rather than a separate test, via a
+      package-private `droppedCount()` accessor — Flink's metrics API is
+      write-only, no built-in way to read a `Counter` back without one.
+      `mvn clean verify` green (50 classes analyzed, includes the full
+      Phase 5 integration suite).
 
-**Exit criteria**: harness tests green; filter drop counter exposed as metric
+**Exit criteria**: harness tests green; filter drop counter exposed as metric — met, evidence above
 
 ---
 
@@ -781,3 +821,5 @@ README; repo reproducible from clean clone + documented secrets
 | D27 | 2026-07-28 | Top-level package `serde` renamed to `serialization` and restructured: `serde/mapper` → `serialization/codec` (holds `AvroRecordDecoder`/`AvroRecordEncoder` from D26); `serde/deserialization` → `serialization/decode` (+ `decode/decoders` for the per-topic `RxFillEventAvroMapper`/`DrugClassRefMapper`/`AlertLeadTimeMapper`); `serde/serialization` → `serialization/encode` (+ `encode/encoders` for the per-topic `*AvroSerializer` classes); `serde/kryo` → `serialization/kryo` (unchanged contents); `DeadLetterRecord`/`DeadLetterSplitFunction` moved out of the old `serde/util` grab-bag into a new `serialization/deadletter`. `KafkaSourceResult`/`KafkaSourceUtil` remain in `serialization/util` for now — not yet resolved where they belong (candidates: fold into `deadletter` since `KafkaSourceResult` is what `DeadLetterRecord`/`DeadLetterSplitFunction` consume, or move `KafkaSourceUtil` beside `config.KafkaConnectionConfig` since it only builds `OffsetsInitializer`/security `Properties` from Kafka connection config and has nothing to do with serialization at all) | User flagged the `serde` layout as not enterprise-grade. Root cause was twofold: (1) `serde` itself was never spec-aligned — `spec.md`'s "Project structure" section (line 400) names this package `serialization`, and the divergence was never recorded as a Decision Log entry, it just accumulated across D22–D26; (2) `serde/util` was a classic grab-bag (no cohesive responsibility) and `serde/mapper` was a stale name left over from before D26 renamed the types it holds from Mapper/Serializer to Decoder/Encoder. Verified: `mvn clean verify` green with zero remaining `rxvigilance.serde` references anywhere in `src/`, PR merged |
 | D28 | 2026-07-29 | Testcontainers bumped `1.19.8` → `2.0.5` (`testcontainers-redpanda`/`testcontainers-junit-jupiter` artifact IDs, per 2.x's module rename convention — `org.testcontainers.redpanda.RedpandaContainer`'s package is unchanged, so no source changes needed beyond `pom.xml`) | `#71`'s first `KafkaSourceSinkRoundTripIT` run failed with every Testcontainers Docker-detection strategy rejected by a `400 Bad Request`, confirmed via `-Dlog4j2.configurationFile` DEBUG logging to be `docker-java` (bundled in Testcontainers 1.x) hardcoding a request for Docker API version 1.32, which this machine's Docker Engine 29 (Docker Desktop 4.56) refuses outright. Documented, widely-hit break (`testcontainers-java` issues #11232/#11235): 1.20.x/1.21.x never fixed it: 2.0.2+ ships a `docker-java` that negotiates the API version with the daemon instead of assuming a fixed old one |
 | D29 | 2026-07-29 | `AvroKeyValueSerializer` (write side) now constructs `KafkaAvroSerializer` via the 2-arg `(SchemaRegistryClient, Map<String,?>)` constructor with `auto.register.schemas=true` and `schema.registry.url` explicitly set, instead of the 1-arg `(SchemaRegistryClient)` constructor it used before | `gapRiskAlertSinkRoundTrip` hung in an infinite Flink task-restart loop (196+ attempts observed before being killed) once checkpointing was enabled (checkpointing implicitly turns on Flink's retry-on-failure, unlike the source tests which never hit this). Decompiled `KafkaAvroSerializer`'s bytecode to confirm: the 1-arg constructor never calls `configure(...)`, so `autoRegisterSchema` — documented by Confluent as defaulting to `true` — was silently sitting at Java's untouched-`boolean` default of `false` instead, with no way to override it since no config map was ever passed at all. Every write to a topic without an already-registered schema failed with `404 Subject not found`, and retrying doesn't fix a permanently-misconfigured serializer, hence the infinite loop. This was invisible before #71 because `AlertKafkaSinksTest`/`KafkaTypedSinkBuilderTest` stub the schema registry client (never exercising this runtime path), and even real local runs are masked by `bootstrap-local-topics.sh` pre-registering schemas for the three known production topics (`gap-risk-alerts`/`lapsed-alerts`/`pdc-snapshots` — confirmed in Phase 0's own ledger note, `FULL_TRANSITIVE` on 3 subjects) — a topic whose schema isn't pre-registered would have hit this in production too, indistinguishable from a hang, with no error pointing at the cause |
+| D30 | 2026-07-31 | `ChronicClassFilterFunction` buffers fill events arriving before `NDC_CLASS_DESCRIPTOR`'s broadcast state has received its first update (operator list state; flushed through the filter once the first broadcast update lands), rather than discarding them | The race only exists on a genuinely fresh first-ever deploy — Flink restores all operator state, broadcast state included, before resuming record processing on every ordinary restart, so this window never recurs after the first successful run. Discarding during that window would silently drop real member fills, an actual correctness bug, not a cosmetic one. Buffering also resolves a second question for free: once the first broadcast update lands, "NDC not present in state" unambiguously means "not tracked" forever after — no need to keep distinguishing "not tracked" from "not warm yet" on an ongoing basis |
+| D31 | 2026-07-31 | New domain record `EnrichedFillEvent(RxFillEvent event, String drugClass)` wraps the original event rather than flattening its fields into a new duplicate record | Wrapping means zero risk of the two field sets drifting apart as `RxFillEvent` evolves — a flattened alternative would require updating two records in lockstep for every future `RxFillEvent` field change. The one extra `.event()` indirection downstream is a small, one-time cost against that ongoing duplication risk |
