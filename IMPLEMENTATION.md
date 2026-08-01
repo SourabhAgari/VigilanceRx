@@ -34,7 +34,7 @@ requires restoring it (one `terraform apply`).
 | 4 | Config, serialization, watermarks | local | ✅ done 2026-07-25 |
 | 5 | Sources & sinks | local | ✅ done 2026-07-29 |
 | 6 | Upstream broadcast filter | local | ✅ done 2026-08-01 |
-| 7 | Adherence core — FILL path & timers | local | ☐ not started |
+d| 7 | Adherence core — FILL path & timers | local | ✅ done 2026-08-01 |
 | 8 | onTimer, LapsedAlert & REVERSAL path | local | ☐ not started |
 | 9 | Metrics, job wiring & integration test | local | ☐ not started |
 | 10 | Containerization & CI/CD deploy path | cloud | ☐ not started |
@@ -681,20 +681,90 @@ update per established practice (#60/#61 verification gate is
 **Goal**: `AdherenceProcessFunction` FILL handling exactly per spec
 "Event handling — FILL" (7 steps).
 
-- [ ] `KeyedBroadcastProcessFunction` skeleton, keyed
+- [x] `KeyedBroadcastProcessFunction` skeleton, keyed
       `(memberId, drugClass)`; `AdherenceState` ValueState + TTL
-- [ ] FILL path: IntervalMerger delegation, delete-then-register timer,
+      — done 2026-08-01: issue #81. Keyed on `Tuple2<String, String>`
+      (`memberId`, `drugClass`) rather than a new domain record — purely
+      Flink plumbing, not a domain concept worth naming, and `Tuple2` has
+      Flink's own built-in `TupleSerializer` (zero Kryo registration
+      needed), unlike every domain record touched so far. Main `OUT` type
+      is `Void`: per spec.md's pipeline topology diagram, all four of this
+      operator's eventual outputs (`GapRiskAlert`, `LapsedAlert`,
+      `PdcSnapshot`, dead-letter) are side outputs, not a shared main-output
+      type — there's no honest common supertype across four genuinely
+      different domain shapes. Only `PDC_SNAPSHOT_OUTPUT_TAG` declared this
+      phase; the other three belong to Phase 8, where what feeds them
+      actually exists. `AdherenceState`'s `ValueStateDescriptor` is a
+      `private transient` instance field built in `open()` (not
+      `static final` like `LEAD_TIME_DESCRIPTOR`) since `enableTimeToLive`
+      mutates the descriptor in place using constructor-injected
+      `StateBackEndConfig` (reused from Phase 4, not redeclared) — nothing
+      external needs the same instance, unlike the broadcast descriptor.
+- [x] FILL path: IntervalMerger delegation, delete-then-register timer,
       `alertLeadDays` broadcast lookup persisted, `activeTimerTimestamp`
       persisted
-- [ ] Missing lead-time lookup entry → default + warn metric (Decision Log)
-- [ ] `AdherenceTimerTest` (event-time advancement, explicit watermarks):
-  - [ ] single fill registers timer at `endDate - leadDays`
-  - [ ] refill before threshold cancels & re-registers (exactly one timer)
-  - [ ] lead time resolved per `(class, channel)`, not a constant
-  - [ ] PDC snapshot emitted on fill
+      — done 2026-08-01: `IntervalMerger.merge()` (Phase 3, pure/tested)
+      handles the interval math entirely; this operator only orchestrates
+      the Flink-specific parts around it. Real bug caught while reading
+      `merge()`'s actual source before writing the caller:
+      `IntervalMerger.merge()` requires a non-null `state` argument (calls
+      `state.activeCoverageIntervals()` immediately, no null-guard) — a
+      brand-new key's `null` `ValueState` read is converted to an empty
+      `AdherenceState` before the call, not passed through. Also:
+      `merge()` returns the *same object reference* (not an equal copy) on
+      a duplicate `claimId` — detected via `==`, not `.equals()`, to skip
+      the timer/lookup work entirely on redelivery rather than needlessly
+      re-registering an identical timer or re-running the lead-time lookup
+      against potentially-changed reference data. Timer timestamps and the
+      watermark strategy's own timestamp assignment (Phase 4's
+      `RxFillWatermarkStrategy`) both derive from `LocalDate` via
+      `atStartOfDay(ZoneOffset.UTC)` — confirmed identical before writing,
+      since a mismatched time base would silently misalign timers against
+      the watermarks driving them. `PdcSnapshot.emittedAt` uses
+      `ctx.timestamp()` (the fill event's own assigned event-time
+      timestamp), not `ctx.timerService().currentWatermark()` — the
+      watermark lags real event time by design and can be uninitialized
+      early in a stream.
+- [x] Missing lead-time lookup entry → default + warn metric (Decision Log)
+      — resolved as D32: static `ParameterTool`-driven default
+      (`alert.lead.days.default`, default 7, never 0 — see D32's full
+      rationale for why 0 would defeat `GapRiskAlert`'s purpose), plus a
+      warn metric on every occurrence. Deliberately not buffered like D30 —
+      by the time a fill reaches this operator it's already confirmed
+      trackable (survived Phase 6), and the interval-merge/`PdcSnapshot`
+      work doesn't depend on `alertLeadDays` at all, only the timer's exact
+      firing date does.
+- [x] `AdherenceTimerTest` (event-time advancement, explicit watermarks):
+  - [x] single fill registers timer at `endDate - leadDays`
+  - [x] refill before threshold cancels & re-registers (exactly one timer)
+  - [x] lead time resolved per `(class, channel)`, not a constant
+  - [x] PDC snapshot emitted on fill
+      — done 2026-08-01: `AdherenceProcessFunctionTest`,
+      `KeyedBroadcastOperatorTestHarness` + `CoBroadcastWithKeyedOperator`.
+      `onTimer` isn't implemented until Phase 8, so there's no side-output
+      alert content to assert on when a timer fires yet — resolved by
+      asserting on real persisted-state content (`activeTimerTimestamp`,
+      `alertLeadDays`, via a package-private `currentAdherenceState()`
+      accessor, same pattern as Phase 6's `droppedCount()`) plus bracketing
+      an exact watermark advance with `numEventTimeTimers()` before/after,
+      rather than weakening CLAUDE.md §5's "assert on content, not counts"
+      rule — advancing to the precise expected timestamp and observing the
+      timer actually fire there is still advancing time explicitly and
+      observing a real effect, not a vacuous count check. Broadcast-side
+      watermark advanced to `Long.MAX_VALUE` once in `setUp()`, since the
+      operator's combined watermark is the minimum across both connected
+      inputs and the reference stream was otherwise silently holding back
+      every timer from ever firing. Five Kryo registrations needed (not
+      two) — every record this operator's data actually touches:
+      `EnrichedFillEvent` + nested `RxFillEvent` (input), `AdherenceState` +
+      nested `CoverageInterval` (keyed state), `PdcSnapshot` (side output).
+      A fifth test (`missingLeadTimeLookupFallsBackToDefaultAndWarns`)
+      covers D32's fallback path, beyond the four ledger-listed cases.
+      `mvn clean verify` green (52 classes analyzed, includes the full
+      Phase 5 integration suite).
 
 **Exit criteria**: timer invariant holds in every test — at most one
-registered timer per key, state timestamp matches it
+registered timer per key, state timestamp matches it — met, evidence above
 
 ---
 
