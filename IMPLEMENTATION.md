@@ -33,7 +33,7 @@ requires restoring it (one `terraform apply`).
 | 3 | Domain model & interval logic | local | ✅ done 2026-07-23 |
 | 4 | Config, serialization, watermarks | local | ✅ done 2026-07-25 |
 | 5 | Sources & sinks | local | ✅ done 2026-07-29 |
-| 6 | Upstream broadcast filter | local | ☐ not started |
+| 6 | Upstream broadcast filter | local | ✅ done 2026-08-01 |
 | 7 | Adherence core — FILL path & timers | local | ☐ not started |
 | 8 | onTimer, LapsedAlert & REVERSAL path | local | ☐ not started |
 | 9 | Metrics, job wiring & integration test | local | ☐ not started |
@@ -623,16 +623,56 @@ update per established practice (#60/#61 verification gate is
 
 ## Phase 6 — Upstream broadcast filter
 
-- [ ] `ChronicClassFilterFunction` (`BroadcastProcessFunction`): discard if
+- [x] `ChronicClassFilterFunction` (`BroadcastProcessFunction`): discard if
       NDC not in tracked classes **or** not trackable
       (specialty/infusion, FR-9); forward enriched event (with resolved
       `drugClass`) otherwise
-- [ ] Buffering decision for events arriving before first reference broadcast
+      — done 2026-08-01: issue #78. `NDC_CLASS_DESCRIPTOR` (`MapState<String,
+      DrugClassRef>`) registered with `RecordKryoSerializer` (D24's pattern)
+      rather than left on Flink's default Kryo path — `DrugClassRef` is a
+      record, and Flink's type extraction can't recognize records as POJOs
+      (no JavaBean getters/setters), so it falls back to vanilla Kryo's
+      `FieldSerializer`, which can't handle records at all under Java 17
+      (D22's original finding, hit again here). New domain record
+      `EnrichedFillEvent(RxFillEvent event, String drugClass)` (D31 — wraps
+      rather than flattens) needed the same registration, plus `RxFillEvent`
+      separately, since Kryo registration doesn't propagate into nested
+      record fields (same lesson as `DrugClassRefUpdate`/`DrugClassRef`).
+      Operator UID intentionally not set yet — that happens at stream-wiring
+      time (`.process(...).uid(...)`), and no job-wiring class exists until
+      Phase 9; harness tests bypass `StreamExecutionEnvironment` entirely so
+      there's nothing to set it on right now. Intended UID:
+      `"chronic-class-filter"`, to be applied when Phase 9 wires this in.
+- [x] Buffering decision for events arriving before first reference broadcast
       → record in Decision Log
-- [ ] Harness tests: acute drug discarded; chronic + 0-refills kept;
+      — resolved as D30: buffer in operator list state (via
+      `CheckpointedFunction`/`OperatorStateStore`, since this operator runs
+      before `keyBy` — Flink's keyed-state API isn't valid here), flushed
+      once `NDC_CLASS_DESCRIPTOR` receives its first update. "Is broadcast
+      state empty" is checked live against the actual state on every
+      `processElement` call rather than tracked via a separate boolean flag
+      — a flag would desync from the real, checkpointed broadcast state
+      across a restart that happens mid-buffering.
+- [x] Harness tests: acute drug discarded; chronic + 0-refills kept;
       diabetes-classed specialty NDC discarded; drop-rate metric increments
+      — done 2026-08-01: `ChronicClassFilterFunctionTest`, non-keyed
+      `BroadcastOperatorTestHarness` + `CoBroadcastWithNonKeyedOperator`
+      (distinct from the keyed variant Phase 7's `AdherenceProcessFunction`
+      will need). Four tests: acute discard; chronic + 0-refills kept
+      (proves `refillsAuthorized` is never the filter signal); diabetes-
+      classed but `trackable=false` NDC discarded (proves FR-9's specialty
+      exclusion is a property of the NDC/reference data, not the fill
+      event's own `dispensingChanel` field); and the D30 cold-start
+      buffer-then-replay path explicitly exercised (event arrives before
+      any broadcast update, proven buffered not dropped, then correctly
+      emitted once the update lands). Drop-counter assertions folded into
+      the two discard tests rather than a separate test, via a
+      package-private `droppedCount()` accessor — Flink's metrics API is
+      write-only, no built-in way to read a `Counter` back without one.
+      `mvn clean verify` green (50 classes analyzed, includes the full
+      Phase 5 integration suite).
 
-**Exit criteria**: harness tests green; filter drop counter exposed as metric
+**Exit criteria**: harness tests green; filter drop counter exposed as metric — met, evidence above
 
 ---
 
