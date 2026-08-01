@@ -19,6 +19,7 @@ import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
+import java.io.IOException;
 import java.time.ZoneOffset;
 import java.util.List;
 
@@ -101,5 +102,9 @@ public class AdherenceProcessFunction extends
                                         Context ctx,
                                         Collector<Void> collector) throws Exception {
         ctx.getBroadcastState(LEAD_TIME_DESCRIPTOR).put(alertLeadTimeUpdate.drugClassAndChannel(), alertLeadTimeUpdate.alertLeadDays());
+    }
+
+    AdherenceState currentadherenceState() throws IOException {
+        return adherenceState.value();
     }
 }
