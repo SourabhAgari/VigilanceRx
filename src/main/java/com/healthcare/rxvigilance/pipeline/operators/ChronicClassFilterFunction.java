@@ -71,9 +71,9 @@ public class ChronicClassFilterFunction
         collector.collect(new EnrichedFillEvent(event,ref.drugClass()));
     }
 
-    private static boolean isEmpty(ReadOnlyBroadcastState<String,DrugClassRef> state) throws Exception {
-        return  !state.immutableEntries().iterator().hasNext();
-    }
+//    private static boolean isEmpty(ReadOnlyBroadcastState<String,DrugClassRef> state) throws Exception {
+//        return  !state.immutableEntries().iterator().hasNext();
+//    }
 
     public void processBroadcastElement(DrugClassRefUpdate drugClassRefUpdate, Context context, Collector<EnrichedFillEvent> collector) throws Exception {
         BroadcastState<String, DrugClassRef> broadcastState = context.getBroadcastState(NDC_CLASS_DESCRIPTOR);
