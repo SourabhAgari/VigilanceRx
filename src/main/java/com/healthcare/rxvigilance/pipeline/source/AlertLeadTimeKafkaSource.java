@@ -8,7 +8,7 @@ import com.healthcare.rxvigilance.serialization.decode.decoders.AlertLeadTimeMap
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.utils.ParameterTool;
-import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.OutputTag;
 
@@ -20,9 +20,9 @@ public class AlertLeadTimeKafkaSource {
     private AlertLeadTimeKafkaSource() {
     }
 
-    public static DataStream<AlertLeadTimeUpdate> build(StreamExecutionEnvironment env,
-                                                        KafkaConnectionConfig kafkaConfig,
-                                                        ParameterTool params) {
+    public static SingleOutputStreamOperator<AlertLeadTimeUpdate> build(StreamExecutionEnvironment env,
+                                                                        KafkaConnectionConfig kafkaConfig,
+                                                                        ParameterTool params) {
         return KafkaTypedSourceBuilder.forType(AlertLeadTimeUpdate.class)
                 .connection(kafkaConfig)
                 .params(params)

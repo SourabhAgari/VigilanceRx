@@ -11,6 +11,7 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.OutputTag;
 
@@ -20,11 +21,11 @@ public final class RxFillEventSource {
 
     private RxFillEventSource() {}
 
-    public static DataStream<RxFillEvent> build(StreamExecutionEnvironment env,
+    public static RxFillEventSourceResult build(StreamExecutionEnvironment env,
                                                 KafkaConnectionConfig kafkaConfig,
                                                 WatermarkConfig watermarkConfig,
                                                 ParameterTool parameterTool) {
-        DataStream<RxFillEvent> events = KafkaTypedSourceBuilder
+        SingleOutputStreamOperator<RxFillEvent> events = KafkaTypedSourceBuilder
                 .forType(RxFillEvent.class)
                 .connection(kafkaConfig)
                 .params(parameterTool)
@@ -35,7 +36,17 @@ public final class RxFillEventSource {
                 .sourceName("rx-fill-events")
                 .build(env);
 
-        return events.assignTimestampsAndWatermarks(RxFillWatermarkStrategy.create(watermarkConfig))
+        DataStream<KafkaSourceResult<RxFillEvent>> deadLetters = events.getSideOutput(DEAD_LETTER_TAG);
+
+        DataStream<RxFillEvent> watermarked = events
+                .assignTimestampsAndWatermarks(RxFillWatermarkStrategy.create(watermarkConfig))
                 .uid("rx-fill-events-watermarks");
+
+        return new RxFillEventSourceResult(watermarked, deadLetters);
+    }
+
+    public record RxFillEventSourceResult(
+            DataStream<RxFillEvent> events,
+            DataStream<KafkaSourceResult<RxFillEvent>> deadLetters) {
     }
 }
