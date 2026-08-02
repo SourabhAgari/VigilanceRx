@@ -4,6 +4,7 @@ import com.healthcare.rxvigilance.config.StateBackEndConfig;
 import com.healthcare.rxvigilance.domain.*;
 import com.healthcare.rxvigilance.domain.enums.EventType;
 import com.healthcare.rxvigilance.domain.enums.TimerStage;
+import com.healthcare.rxvigilance.metrics.AdherenceMetricsReporter;
 import com.healthcare.rxvigilance.pipeline.coverage.IntervalMerger;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ReadOnlyBroadcastState;
@@ -46,6 +47,8 @@ public class AdherenceProcessFunction extends
 
     private transient ValueState<AdherenceState> adherenceState;
     private transient Counter missingLeadTimeCounter;
+    private transient Counter gapRiskAlertsEmittedCounter;
+    private transient Counter lapsedAlertsEmittedCounter;
 
     public AdherenceProcessFunction(StateBackEndConfig stateBackEndConfig,
                                     int defaultAlertLeadDays) {
@@ -59,7 +62,10 @@ public class AdherenceProcessFunction extends
                 new ValueStateDescriptor<>("adherence-state", TypeInformation.of(AdherenceState.class));
         descriptor.enableTimeToLive(stateBackEndConfig.toStateTtlConfig());
         adherenceState = getRuntimeContext().getState(descriptor);
-        missingLeadTimeCounter = getRuntimeContext().getMetricGroup().counter("missingLeadTimeLookup");
+        AdherenceMetricsReporter metrics = AdherenceMetricsReporter.register(getRuntimeContext());
+        missingLeadTimeCounter = metrics.missingLeadTimeLookup();
+        gapRiskAlertsEmittedCounter = metrics.gapRiskAlertsEmitted();
+        lapsedAlertsEmittedCounter = metrics.lapsedAlertsEmitted();
     }
 
     @Override
@@ -135,6 +141,7 @@ public class AdherenceProcessFunction extends
             context.output(LAPSED_ALERT_TAG, new LapsedAlert(
                     UUID.randomUUID().toString(), memberId, drugClass,
                     reversal.fillDate(), context.timestamp()));
+            lapsedAlertsEmittedCounter.inc();
 
             adherenceState.update(new AdherenceState(
                     null, unwound.lastFillDate(), 0, unwound.activeCoverageIntervals(),
@@ -187,6 +194,7 @@ public class AdherenceProcessFunction extends
             ctx.output(GAP_RISK_ALERT_TAG, new GapRiskAlert(
                     UUID.randomUUID().toString(), memberId, drugClass,
                     state.currentSupplyEndDate(), state.alertLeadDays(), timestamp));
+            gapRiskAlertsEmittedCounter.inc();
 
             ctx.timerService().registerEventTimeTimer(projectedExhaustionMillis);
 
@@ -199,6 +207,7 @@ public class AdherenceProcessFunction extends
             ctx.output(LAPSED_ALERT_TAG, new LapsedAlert(
                     UUID.randomUUID().toString(), memberId, drugClass,
                     state.currentSupplyEndDate(), timestamp));
+            lapsedAlertsEmittedCounter.inc();
 
             adherenceState.update(new AdherenceState(
                     state.currentSupplyEndDate(), state.lastFillDate(), state.totalDaysCovered(),

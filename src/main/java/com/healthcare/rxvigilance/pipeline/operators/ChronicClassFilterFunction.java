@@ -4,6 +4,7 @@ import com.healthcare.rxvigilance.domain.DrugClassRef;
 import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
 import com.healthcare.rxvigilance.domain.EnrichedFillEvent;
 import com.healthcare.rxvigilance.domain.RxFillEvent;
+import com.healthcare.rxvigilance.metrics.AdherenceMetricsReporter;
 import org.apache.flink.api.common.state.*;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
@@ -39,7 +40,7 @@ public class ChronicClassFilterFunction
 
     @Override
     public void open(Configuration parameters) {
-        droppedCounter = getRuntimeContext().getMetricGroup().counter("chronicClassFilterDropped");
+        droppedCounter = AdherenceMetricsReporter.register(getRuntimeContext()).chronicFilterDropped();
     }
 
     @Override

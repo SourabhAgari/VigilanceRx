@@ -10,6 +10,8 @@ import java.util.stream.Collectors;
 
 public final class JobConfig {
 
+    private final  ParameterTool parameters;
+
     private final KafkaConnectionConfig kafkaConfig;
     private final CheckpointConfig checkpointConfig;
     private final StateBackEndConfig stateBackEndConfig;
@@ -18,11 +20,13 @@ public final class JobConfig {
     private JobConfig(KafkaConnectionConfig kafkaConfig,
                       CheckpointConfig checkpointConfig,
                       StateBackEndConfig stateBackEndConfig,
-                      WatermarkConfig watermarkConfig) {
+                      WatermarkConfig watermarkConfig,
+                      ParameterTool parameters) {
         this.kafkaConfig = kafkaConfig;
         this.checkpointConfig = checkpointConfig;
         this.stateBackEndConfig = stateBackEndConfig;
         this.watermarkConfig = watermarkConfig;
+        this.parameters = parameters;
     }
 
     public static JobConfig fromArgs(String[] args) throws IOException {
@@ -41,7 +45,7 @@ public final class JobConfig {
         return new JobConfig(KafkaConnectionConfig.fromParams(merged),
                 CheckpointConfig.fromParams(merged),
                 StateBackEndConfig.fromParams(merged),
-                WatermarkConfig.fromParams(merged));
+                WatermarkConfig.fromParams(merged),merged);
     }
 
     private static ParameterTool loadClassPathProfile(String profile) throws IOException {
@@ -70,4 +74,6 @@ public final class JobConfig {
     }
 
     public WatermarkConfig getWatermarkConfig() {return watermarkConfig;}
+
+    public ParameterTool getParams() { return parameters; }
 }
