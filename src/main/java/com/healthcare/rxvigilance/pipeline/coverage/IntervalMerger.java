@@ -82,7 +82,8 @@ public final class IntervalMerger {
                 summary.totalDaysCovered(),
                 updatedIntervals,
                 state.alertLeadDays(),
-                state.activeTimerTimestamp());
+                state.activeTimerTimestamp(),
+                state.activeTimerStage());
     }
 
 
@@ -104,6 +105,7 @@ public final class IntervalMerger {
                 summary.totalDaysCovered(),
                 remaining,
                 state.alertLeadDays(),
-                state.activeTimerTimestamp());
+                state.activeTimerTimestamp(),
+                state.activeTimerStage());
     }
 }

@@ -21,7 +21,12 @@ class IntervalMergerTest {
     }
 
     private static AdherenceState emptyState() {
-        return new AdherenceState(null, null, 0, List.of(), 5, null);
+        return new AdherenceState(null,
+                null,
+                0,
+                List.of(),
+                5,
+                null,null);
     }
 
     @Test
@@ -65,7 +70,7 @@ class IntervalMergerTest {
         AdherenceState state = new AdherenceState(
                 LocalDate.of(2026, Month.MARCH, 3), LocalDate.of(2026, Month.FEBRUARY, 1), 30,
                 List.of(new CoverageInterval("LATER-1", LocalDate.of(2026, Month.FEBRUARY, 1), LocalDate.of(2026, Month.MARCH, 3))),
-                5, null);
+                5, null,null);
 
         AdherenceState afterOlderFill = IntervalMerger.merge(state,
                 fillEvent("OLDER-1", LocalDate.of(2026, Month.JANUARY, 1), 15));

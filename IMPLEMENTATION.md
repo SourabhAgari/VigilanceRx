@@ -35,7 +35,7 @@ requires restoring it (one `terraform apply`).
 | 5 | Sources & sinks | local | ✅ done 2026-07-29 |
 | 6 | Upstream broadcast filter | local | ✅ done 2026-08-01 |
 d| 7 | Adherence core — FILL path & timers | local | ✅ done 2026-08-01 |
-| 8 | onTimer, LapsedAlert & REVERSAL path | local | ☐ not started |
+| 8 | onTimer, LapsedAlert & REVERSAL path | local | ✅ done 2026-08-02 |
 | 9 | Metrics, job wiring & integration test | local | ☐ not started |
 | 10 | Containerization & CI/CD deploy path | cloud | ☐ not started |
 | 11 | Observability | cloud | ☐ not started |
@@ -773,21 +773,80 @@ registered timer per key, state timestamp matches it — met, evidence above
 **Goal**: the alert contract, including the **binding correction guarantee**
 (`hld.md` §3 / spec "Event handling — REVERSAL" step 5).
 
-- [ ] `onTimer`: defensive timestamp check → `GapRiskAlert` side output →
+- [x] `onTimer`: defensive timestamp check → `GapRiskAlert` side output →
       register lapsed timer at exhaustion date
-- [ ] Lapsed timer fires → `LapsedAlert`
-- [ ] REVERSAL path: unwind via IntervalMerger, recompute, delete timer,
+      — done 2026-08-02: issue #84. Two independent defensive checks before
+      emitting, not one: the firing timestamp must match `activeTimerTimestamp`
+      (Phase 7's hygiene invariant paying off directly), *and*
+      `currentSupplyEndDate` must still be ahead of the firing timestamp
+      (spec step 2) — belt and suspenders, since a false `GapRiskAlert` has
+      real member-facing cost. The second check only applies to the
+      `GAP_RISK` branch, not `LAPSED` — firing exactly at
+      `currentSupplyEndDate` *is* the correct, expected behavior for the
+      lapsed stage, not something to defend against. `emittedAt` uses the
+      `onTimer(long timestamp, ...)` parameter itself, not `ctx.timestamp()`
+      — the latter is for the current *input element*, and there isn't one
+      when a timer fires; easy to reach for the wrong one since they sound
+      alike. `ctx.getCurrentKey()` (a `Tuple2<String,String>`) is the source
+      of `memberId`/`drugClass` for the alert, since there's no incoming
+      event to read them from either.
+- [x] Lapsed timer fires → `LapsedAlert`
+      — done 2026-08-02: same `onTimer` override, `LAPSED` branch. Clears
+      `activeTimerTimestamp`/`activeTimerStage` back to `null`/`null` on
+      firing — the correct resting state until the next real fill for this
+      key restarts the cycle from `GAP_RISK`.
+- [x] REVERSAL path: unwind via IntervalMerger, recompute, delete timer,
       re-register if coverage remains; if **no** coverage remains, emit
       corrective alert immediately in `processElement`
-- [ ] Harness tests:
-  - [ ] no refill → GapRiskAlert then LapsedAlert, in event-time order
-  - [ ] stale timer (timestamp mismatch) fires as no-op
-  - [ ] reversal shrinking coverage → superseding alert from recomputed timer
-  - [ ] reversal to zero coverage → immediate corrective alert, no timer left
-  - [ ] reversal after GapRiskAlert already emitted → supersede semantics hold
+      — done 2026-08-02: added the `eventType` branch `processElement` was
+      missing since Phase 7 (every event, FILL or REVERSAL, was silently
+      merged as a FILL until now — latent since #81, never in scope until
+      this issue). `IntervalMerger.unwind()` (Phase 3) does the actual
+      interval math; `handleReversal()` orchestrates the Flink-specific
+      parts, reusing the exact same reference-equality no-op signal
+      `merge()` uses for duplicate `claimId`s (`unwound == current`) — which
+      also elegantly covers redelivery of the same reversal for free, since
+      a second delivery finds nothing left to unwind. Coverage-remains case
+      re-arms as `GAP_RISK` (subtracts `alertLeadDays` again), not a bare
+      "no lead time" timer — spec's own wording ("the recomputed timer
+      *emits the superseding alert*") ties this to the same
+      latest-alert-wins machinery a fresh fill uses, not a shortcut to the
+      confirmed-lapse stage. Timer deletion never checks
+      `activeTimerStage` before deleting — Flink's `deleteEventTimeTimer`
+      is purely timestamp-based, no concept of stage at all, so the same
+      one line correctly cleans up a pending `GAP_RISK` or `LAPSED` timer
+      without needing to know which.
+- [x] Harness tests:
+  - [x] no refill → GapRiskAlert then LapsedAlert, in event-time order
+  - [x] stale timer (timestamp mismatch) fires as no-op
+  - [x] reversal shrinking coverage → superseding alert from recomputed timer
+  - [x] reversal to zero coverage → immediate corrective alert, no timer left
+  - [x] reversal after GapRiskAlert already emitted → supersede semantics hold
+      — done 2026-08-02: `AdherenceProcessFunctionTest`, extended. The
+      stale-timer case is structurally unreachable through the normal,
+      correct FILL/REVERSAL paths by design (both always delete-then-
+      register) — genuinely testable only by deliberately desyncing state
+      from the real registered timer, so a new package-private
+      `forceAdherenceStateForTest()` accessor was added alongside the
+      existing `currentadherenceState()`, simulating the realistic cause
+      (a restored savepoint older than the live timer schedule). The
+      "event-time order" assertion compares the two alerts' own `emittedAt`
+      fields against each other, not which `assertThat` call happens to run
+      first in the test method — the latter would prove nothing about the
+      pipeline's actual behavior. Two more Kryo registrations needed in
+      `setUp()` (`GapRiskAlert`, `LapsedAlert`) — same disease as every
+      prior phase, hit again the moment these types first flowed through a
+      side output. One pre-existing Phase-7-era test
+      (`singleFillRegistersTimerAtEndDateMinusLeadDays`) had a now-stale
+      assertion (`numEventTimeTimers()` expected `0` after firing, written
+      for `onTimer`'s old no-op stub) — updated to assert `1` (the cascaded
+      lapsed timer) plus real `GapRiskAlert` content, rather than weakened
+      or deleted, per this repo's own rule on failing tests.
+      `mvn clean verify` green (55 classes analyzed, includes the full
+      Phase 5 integration suite).
 
 **Exit criteria**: every test asserts side-output *contents*, not just
-counts; correction guarantee covered explicitly
+counts; correction guarantee covered explicitly — met, evidence above
 
 ---
 
