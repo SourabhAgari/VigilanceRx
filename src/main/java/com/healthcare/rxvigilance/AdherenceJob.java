@@ -15,6 +15,7 @@ import com.healthcare.rxvigilance.pipeline.source.AlertLeadTimeKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.DrugClassRefKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.RxFillEventSource;
 import com.healthcare.rxvigilance.serialization.deadletter.DeadLetterRecord;
+import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.utils.ParameterTool;
@@ -34,7 +35,11 @@ public class AdherenceJob {
 
         int defaultAlertDays = params.getInt("alert.lead.days.default",7);
 
+
+
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.getConfig().registerTypeWithKryoSerializer(EnrichedFillEvent.class, RecordKryoSerializer.class);
+        env.getConfig().addDefaultKryoSerializer(Record.class, RecordKryoSerializer.class);
         StateBackEndConfig.configureRocksDbBackEnd(env);
 
         env.enableCheckpointing(jobConfig.getCheckpointConfig().intervalMs());
@@ -47,9 +52,9 @@ public class AdherenceJob {
         DataStream<RxFillEvent> fillEvents = fillEventSourceResult.events();
 
         SingleOutputStreamOperator<DrugClassRefUpdate> drugClassUpdates =
-                DrugClassRefKafkaSource.build(env, kafkaConfig, params);
+                DrugClassRefKafkaSource.build(env, kafkaConfig, watermarkConfig, params);
         SingleOutputStreamOperator<AlertLeadTimeUpdate> leadTimeUpdates =
-                AlertLeadTimeKafkaSource.build(env, kafkaConfig, params);
+                AlertLeadTimeKafkaSource.build(env, kafkaConfig, watermarkConfig, params);
 
         BroadcastStream<DrugClassRefUpdate> drugClassBroadcast =
                 drugClassUpdates.broadcast(ChronicClassFilterFunction.NDC_CLASS_DESCRIPTOR);

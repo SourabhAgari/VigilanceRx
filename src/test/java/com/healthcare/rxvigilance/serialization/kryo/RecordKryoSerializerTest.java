@@ -13,6 +13,7 @@ import org.objenesis.strategy.StdInstantiatorStrategy;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.Month;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -71,6 +72,23 @@ class RecordKryoSerializerTest {
                 3, Channel.MAIL_ORDER, "CLM-1");
 
         assertThat(roundTrip(event, RxFillEvent.class)).isEqualTo(event);
+    }
+
+    @Test
+    void roundTripsRecordWithListFieldBackedByImmutableList() {
+        kryo.register(CoverageInterval.class, serializer);
+        kryo.register(AdherenceState.class, serializer);
+
+        AdherenceState state = new AdherenceState(
+                LocalDate.of(2026, Month.JULY, 25),
+                LocalDate.of(2026, Month.JULY, 20),
+                5,
+                List.of(new CoverageInterval("CLM-1",
+                        LocalDate.of(2026, Month.JULY, 20),
+                        LocalDate.of(2026, Month.JULY, 25))),
+                10, null, null);
+
+        assertThat(roundTrip(state, AdherenceState.class)).isEqualTo(state);
     }
 
     private <T> T roundTrip(T value, Class<T> type) {

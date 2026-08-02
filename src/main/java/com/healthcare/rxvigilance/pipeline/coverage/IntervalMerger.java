@@ -88,9 +88,9 @@ public final class IntervalMerger {
 
 
     public static AdherenceState unwind(AdherenceState state, String originalClaimId) {
-        List<CoverageInterval> remaining = state.activeCoverageIntervals().stream()
+        List<CoverageInterval> remaining = new ArrayList<>(state.activeCoverageIntervals().stream()
                 .filter(interval -> !interval.claimId().equals(originalClaimId))
-                .toList();
+                .toList());
 
         if (remaining.size() == state.activeCoverageIntervals().size()) {
             LOG.warn("Reversal referenced unknown claimId {}; no matching interval found, no-op", originalClaimId);

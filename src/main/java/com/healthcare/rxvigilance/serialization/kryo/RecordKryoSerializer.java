@@ -8,7 +8,9 @@ import com.esotericsoftware.kryo.io.Output;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public class RecordKryoSerializer extends Serializer<Record> {
 
@@ -20,7 +22,11 @@ public class RecordKryoSerializer extends Serializer<Record> {
     public void write(Kryo kryo, Output output, Record rec) {
         for (RecordComponent component : rec.getClass().getRecordComponents()) {
             try {
-                kryo.writeClassAndObject(output, component.getAccessor().invoke(rec));
+                Object value = component.getAccessor().invoke(rec);
+                if (value instanceof List<?> list) {
+                    value = new ArrayList<>(list);
+                }
+                kryo.writeClassAndObject(output, value);
             } catch (ReflectiveOperationException e) {
                 throw new KryoException("Failed to read component " + component.getName()
                         + " of " + rec.getClass(), e);

@@ -16,6 +16,9 @@ import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction;
 import org.apache.flink.util.Collector;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class ChronicClassFilterFunction
         extends BroadcastProcessFunction<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent>
         implements CheckpointedFunction {
@@ -49,7 +52,8 @@ public class ChronicClassFilterFunction
                                        EnrichedFillEvent>.ReadOnlyContext readOnlyContext,
                                Collector<EnrichedFillEvent> collector) throws Exception {
         ReadOnlyBroadcastState<String,DrugClassRef> broadcastState = readOnlyContext.getBroadcastState(NDC_CLASS_DESCRIPTOR);
-        if(isEmpty(broadcastState)) {
+        DrugClassRef ref = broadcastState.get(event.ndcCode());
+        if (ref == null) {
             bufferState.add(event);
             return;
         }
@@ -71,18 +75,22 @@ public class ChronicClassFilterFunction
         return  !state.immutableEntries().iterator().hasNext();
     }
 
-    @Override
-    public void processBroadcastElement(DrugClassRefUpdate drugClassRefUpdate,
-                                        BroadcastProcessFunction<RxFillEvent, DrugClassRefUpdate,
-                                                EnrichedFillEvent>.Context context,
-                                        Collector<EnrichedFillEvent> collector) throws Exception {
-        BroadcastState<String,DrugClassRef> broadcastState = context.getBroadcastState(NDC_CLASS_DESCRIPTOR);
-        broadcastState.put(drugClassRefUpdate.ndcCode(),drugClassRefUpdate.drugClassRef());
+    public void processBroadcastElement(DrugClassRefUpdate drugClassRefUpdate, Context context, Collector<EnrichedFillEvent> collector) throws Exception {
+        BroadcastState<String, DrugClassRef> broadcastState = context.getBroadcastState(NDC_CLASS_DESCRIPTOR);
+        broadcastState.put(drugClassRefUpdate.ndcCode(), drugClassRefUpdate.drugClassRef());
 
-        for(RxFillEvent buffer : bufferState.get()) {
-            filterAndEmit(buffer,broadcastState,collector);
+        List<RxFillEvent> remaining = new ArrayList<>();
+        for (RxFillEvent buffered : bufferState.get()) {
+            if (buffered.ndcCode().equals(drugClassRefUpdate.ndcCode())) {
+                filterAndEmit(buffered, broadcastState, collector);
+            } else {
+                remaining.add(buffered);
+            }
         }
         bufferState.clear();
+        for (RxFillEvent r : remaining) {
+            bufferState.add(r);
+        }
     }
 
     public long droppedCount() {
