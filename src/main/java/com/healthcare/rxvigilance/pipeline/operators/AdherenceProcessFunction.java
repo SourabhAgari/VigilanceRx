@@ -111,7 +111,7 @@ public class AdherenceProcessFunction extends
                 finalState.currentSupplyEndDate(), context.timestamp()));
     }
 
-    private void handleReversal(EnrichedFillEvent event, ReadOnlyContext context) throws Exception {
+    private void handleReversal(EnrichedFillEvent event, ReadOnlyContext context) throws IOException {
         AdherenceState currentState = adherenceState.value();
         if (currentState == null) {
             return;
