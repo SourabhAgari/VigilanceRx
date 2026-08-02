@@ -27,7 +27,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 public class AdherenceJob {
     public static void main(String[] args) throws Exception {
         JobConfig jobConfig = JobConfig.fromArgs(args);
-        ParameterTool params  = ParameterTool.fromArgs(args);
+        ParameterTool params = jobConfig.getParams();
         KafkaConnectionConfig kafkaConfig = jobConfig.getKafkaConfig();
         WatermarkConfig watermarkConfig = jobConfig.getWatermarkConfig();
         StateBackEndConfig stateBackEndConfig = jobConfig.getStateBackEndConfig();
