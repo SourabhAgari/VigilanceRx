@@ -98,7 +98,7 @@ class KafkaSourceSinkRoundTripIT {
         WatermarkConfig watermarkConfig = new WatermarkConfig(Duration.ofHours(24), Duration.ofMinutes(5));
         ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.rx-fill-events", topic));
 
-        DataStream<RxFillEvent> stream = RxFillEventSource.build(env, kafkaConfig, watermarkConfig, params);
+        DataStream<RxFillEvent> stream = RxFillEventSource.build(env, kafkaConfig, watermarkConfig, params).events();
 
         List<RxFillEvent> results = stream.executeAndCollect(1);
         assertThat(results).containsExactly(event);
