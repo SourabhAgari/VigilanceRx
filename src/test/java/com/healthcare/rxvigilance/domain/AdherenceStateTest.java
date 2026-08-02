@@ -21,7 +21,8 @@ class AdherenceStateTest {
 
         AdherenceState adherenceState = new AdherenceState(
                 LocalDate.of(2026, Month.JANUARY, 31),
-                LocalDate.of(2026, Month.JANUARY, 30), 30, original, 5, null);
+                LocalDate.of(2026, Month.JANUARY, 30),
+                30, original, 5, null,null);
 
         original.add(new CoverageInterval("CLM-2",
                 LocalDate.of(2026, Month.FEBRUARY, 1),
@@ -34,7 +35,8 @@ class AdherenceStateTest {
     void returnedIntervalListIsUnmodifiable() {
         AdherenceState state = new AdherenceState(
                 LocalDate.of(2026, Month.JANUARY, 31),
-                LocalDate.of(2026, Month.JANUARY, 1), 30, List.of(), 5, null);
+                LocalDate.of(2026, Month.JANUARY, 1),
+                30, List.of(), 5, null,null);
 
         CoverageInterval interval = new CoverageInterval(
                 "CLM-1",

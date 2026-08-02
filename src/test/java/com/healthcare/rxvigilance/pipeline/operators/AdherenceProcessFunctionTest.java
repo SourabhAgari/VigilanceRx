@@ -4,6 +4,7 @@ import com.healthcare.rxvigilance.config.StateBackEndConfig;
 import com.healthcare.rxvigilance.domain.*;
 import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
+import com.healthcare.rxvigilance.domain.enums.TimerStage;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -51,6 +52,8 @@ class AdherenceProcessFunctionTest {
         harness.getExecutionConfig().registerTypeWithKryoSerializer(AdherenceState.class, RecordKryoSerializer.class);
         harness.getExecutionConfig().registerTypeWithKryoSerializer(CoverageInterval.class, RecordKryoSerializer.class);
         harness.getExecutionConfig().registerTypeWithKryoSerializer(PdcSnapshot.class, RecordKryoSerializer.class);
+        harness.getExecutionConfig().registerTypeWithKryoSerializer(GapRiskAlert.class, RecordKryoSerializer.class);
+        harness.getExecutionConfig().registerTypeWithKryoSerializer(LapsedAlert.class, RecordKryoSerializer.class);
 
         harness.open();
         harness.processBroadcastWatermark(Long.MAX_VALUE);
@@ -80,7 +83,18 @@ class AdherenceProcessFunctionTest {
         assertThat(state.activeTimerTimestamp()).isEqualTo(expectedTimerTimestamp);
 
         harness.processWatermark(expectedTimerTimestamp);
-        assertThat(harness.numEventTimeTimers()).isZero();
+
+        assertThat(harness.numEventTimeTimers()).isEqualTo(1);
+
+        List<GapRiskAlert> alerts = harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)
+                .stream().map(StreamRecord::getValue).toList();
+        assertThat(alerts).containsExactly(new GapRiskAlert(
+                alerts.get(0).alertId(), "member-1", "CHRONIC_CARDIAC",
+                expectedEndDate, 5, expectedTimerTimestamp));
+
+        AdherenceState afterFiring = function().currentadherenceState();
+        assertThat(afterFiring.activeTimerStage()).isEqualTo(TimerStage.LAPSED);
+        assertThat(afterFiring.activeTimerTimestamp()).isEqualTo(epochMillis(expectedEndDate));
     }
 
     @Test
@@ -162,6 +176,196 @@ class AdherenceProcessFunctionTest {
         return new EnrichedFillEvent(event, drugClass);
     }
 
+    @Test
+    void noRefillEmitsGapRiskAlertThenLapsedAlertInEventTimeOrder() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        int daySupply = 30;
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, daySupply, Channel.RETAIL),
+                epochMillis(fillDate));
+
+        LocalDate expectedEndDate = fillDate.plusDays(daySupply);
+        long gapRiskTimerTimestamp = epochMillis(expectedEndDate.minusDays(5));
+        long lapsedTimerTimestamp = epochMillis(expectedEndDate);
+
+        // no refill ever arrives — advance the watermark straight through both deadlines
+        harness.processWatermark(gapRiskTimerTimestamp);
+        harness.processWatermark(lapsedTimerTimestamp);
+
+        List<GapRiskAlert> gapRiskAlerts = harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)
+                .stream().map(StreamRecord::getValue).toList();
+        List<LapsedAlert> lapsedAlerts = harness.getSideOutput(AdherenceProcessFunction.LAPSED_ALERT_TAG)
+                .stream().map(StreamRecord::getValue).toList();
+
+        assertThat(gapRiskAlerts).hasSize(1);
+        assertThat(gapRiskAlerts.get(0).memberId()).isEqualTo("member-1");
+        assertThat(gapRiskAlerts.get(0).drugClass()).isEqualTo("CHRONIC_CARDIAC");
+        assertThat(gapRiskAlerts.get(0).expiresOn()).isEqualTo(expectedEndDate);
+        assertThat(gapRiskAlerts.get(0).leadDays()).isEqualTo(5);
+        assertThat(gapRiskAlerts.get(0).emittedAt()).isEqualTo(gapRiskTimerTimestamp);
+
+        assertThat(lapsedAlerts).hasSize(1);
+        assertThat(lapsedAlerts.get(0).memberId()).isEqualTo("member-1");
+        assertThat(lapsedAlerts.get(0).drugClass()).isEqualTo("CHRONIC_CARDIAC");
+        assertThat(lapsedAlerts.get(0).lapsedOn()).isEqualTo(expectedEndDate);
+        assertThat(lapsedAlerts.get(0).emittedAt()).isEqualTo(lapsedTimerTimestamp);
+
+        // "in event-time order" — GapRiskAlert's own timestamp must precede LapsedAlert's
+        assertThat(gapRiskAlerts.get(0).emittedAt()).isLessThan(lapsedAlerts.get(0).emittedAt());
+
+        // lapsed fired and nothing re-registered — the cycle terminates correctly
+        assertThat(harness.numEventTimeTimers()).isZero();
+        AdherenceState finalState = function().currentadherenceState();
+        assertThat(finalState.activeTimerTimestamp()).isNull();
+        assertThat(finalState.activeTimerStage()).isNull();
+    }
+
+    @Test
+    void staleTimerFiresAsNoOp() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        int daySupply = 30;
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, daySupply, Channel.RETAIL),
+                epochMillis(fillDate));
+
+        LocalDate expectedEndDate = fillDate.plusDays(daySupply);
+        long realTimerTimestamp = epochMillis(expectedEndDate.minusDays(5));
+
+        // Simulate a stale-timer scenario: state's activeTimerTimestamp no longer matches
+        // the timer actually registered with Flink (e.g., restored from a savepoint older
+        // than the live timer schedule). The real, still-registered timer stays at
+        // realTimerTimestamp; we overwrite state to claim a *different* one is active.
+        AdherenceState desynced = function().currentadherenceState();
+        function().forceAdherenceStateForTest(new AdherenceState(
+                desynced.currentSupplyEndDate(), desynced.lastFillDate(), desynced.totalDaysCovered(),
+                desynced.activeCoverageIntervals(), desynced.alertLeadDays(),
+                realTimerTimestamp + 1, TimerStage.GAP_RISK));
+
+        harness.processWatermark(realTimerTimestamp);
+
+        assertThat(harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)).isNullOrEmpty();
+        assertThat(harness.numEventTimeTimers()).isZero(); // fired (Flink removes it regardless) but no-op, nothing cascaded
+    }
+
+    @Test
+    void reversalShrinkingCoverageRegistersSupersedingTimerFromRecomputedEndDate() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+
+        LocalDate firstFillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", firstFillDate, 30, Channel.RETAIL),
+                epochMillis(firstFillDate));
+
+        LocalDate secondFillDate = LocalDate.of(2026, Month.MARCH, 15);
+        harness.processElement(
+                fillEvent("claim-2", "member-1", "CHRONIC_CARDIAC", secondFillDate, 30, Channel.RETAIL),
+                epochMillis(secondFillDate));
+
+        LocalDate extendedEndDate = secondFillDate.plusDays(30);
+        long extendedTimerTimestamp = function().currentadherenceState().activeTimerTimestamp();
+        assertThat(function().currentadherenceState().currentSupplyEndDate()).isEqualTo(extendedEndDate);
+
+        // reverse the second fill — coverage shrinks back to just the first fill's interval
+        LocalDate reversalDate = secondFillDate.plusDays(1);
+        harness.processElement(
+                reversalEvent("claim-3", "member-1", "CHRONIC_CARDIAC", reversalDate, "claim-2"),
+                epochMillis(reversalDate));
+
+        LocalDate shrunkEndDate = firstFillDate.plusDays(30);
+        AdherenceState afterReversal = function().currentadherenceState();
+        assertThat(afterReversal.currentSupplyEndDate()).isEqualTo(shrunkEndDate);
+        assertThat(afterReversal.activeTimerStage()).isEqualTo(TimerStage.GAP_RISK);
+
+        long supersedingTimerTimestamp = epochMillis(shrunkEndDate.minusDays(5));
+        assertThat(afterReversal.activeTimerTimestamp()).isEqualTo(supersedingTimerTimestamp);
+        assertThat(afterReversal.activeTimerTimestamp()).isNotEqualTo(extendedTimerTimestamp);
+
+        assertThat(harness.numEventTimeTimers()).isEqualTo(1); // old timer deleted, exactly one new one registered
+
+        // firing the superseding timer produces an alert reflecting the shrunk end date, not the old one
+        harness.processWatermark(supersedingTimerTimestamp);
+        List<GapRiskAlert> alerts = harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)
+                .stream().map(StreamRecord::getValue).toList();
+        assertThat(alerts).hasSize(1);
+        assertThat(alerts.get(0).expiresOn()).isEqualTo(shrunkEndDate);
+    }
+
+    @Test
+    void reversalToZeroCoverageEmitsImmediateCorrectiveLapsedAlertWithNoTimerLeft() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+        assertThat(harness.numEventTimeTimers()).isEqualTo(1);
+
+        // reverse the ONLY fill — zero coverage remains
+        LocalDate reversalDate = fillDate.plusDays(2);
+        harness.processElement(
+                reversalEvent("claim-2", "member-1", "CHRONIC_CARDIAC", reversalDate, "claim-1"),
+                epochMillis(reversalDate));
+
+        // no watermark advancement needed — this alert is synchronous, not timer-driven
+        List<LapsedAlert> alerts = harness.getSideOutput(AdherenceProcessFunction.LAPSED_ALERT_TAG)
+                .stream().map(StreamRecord::getValue).toList();
+        assertThat(alerts).hasSize(1);
+        assertThat(alerts.get(0).memberId()).isEqualTo("member-1");
+        assertThat(alerts.get(0).drugClass()).isEqualTo("CHRONIC_CARDIAC");
+        assertThat(alerts.get(0).lapsedOn()).isEqualTo(reversalDate);
+        assertThat(alerts.get(0).emittedAt()).isEqualTo(epochMillis(reversalDate));
+
+        assertThat(harness.numEventTimeTimers()).isZero(); // original gap-risk timer deleted, nothing new registered
+
+        AdherenceState afterReversal = function().currentadherenceState();
+        assertThat(afterReversal.currentSupplyEndDate()).isNull();
+        assertThat(afterReversal.activeTimerTimestamp()).isNull();
+        assertThat(afterReversal.activeTimerStage()).isNull();
+    }
+
+    @Test
+    void reversalAfterGapRiskAlertAlreadyEmittedStillSupersedesCorrectly() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+
+        LocalDate expectedEndDate = fillDate.plusDays(30);
+        long gapRiskTimerTimestamp = epochMillis(expectedEndDate.minusDays(5));
+
+        // let the gap-risk timer fire — a GapRiskAlert is emitted, state cascades to LAPSED
+        harness.processWatermark(gapRiskTimerTimestamp);
+        assertThat(harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)
+                .stream().map(StreamRecord::getValue).toList()).hasSize(1);
+        assertThat(function().currentadherenceState().activeTimerStage()).isEqualTo(TimerStage.LAPSED);
+        assertThat(harness.numEventTimeTimers()).isEqualTo(1); // the cascaded lapsed timer, still pending
+
+        // now the fill gets reversed entirely, before the lapsed timer ever fires
+        LocalDate reversalDate = expectedEndDate.minusDays(3);
+        harness.processElement(
+                reversalEvent("claim-2", "member-1", "CHRONIC_CARDIAC", reversalDate, "claim-1"),
+                epochMillis(reversalDate));
+
+        // the pending lapsed timer is cleaned up, and a corrective LapsedAlert supersedes the earlier GapRiskAlert
+        assertThat(harness.numEventTimeTimers()).isZero();
+
+        List<LapsedAlert> lapsedAlerts = harness.getSideOutput(AdherenceProcessFunction.LAPSED_ALERT_TAG)
+                .stream().map(StreamRecord::getValue).toList();
+        assertThat(lapsedAlerts).hasSize(1);
+        assertThat(lapsedAlerts.get(0).lapsedOn()).isEqualTo(reversalDate);
+
+        AdherenceState afterReversal = function().currentadherenceState();
+        assertThat(afterReversal.currentSupplyEndDate()).isNull();
+        assertThat(afterReversal.activeTimerTimestamp()).isNull();
+        assertThat(afterReversal.activeTimerStage()).isNull();
+    }
+
     private long epochMillis(LocalDate date) {
         return date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
     }
@@ -169,5 +373,14 @@ class AdherenceProcessFunctionTest {
     private AdherenceProcessFunction function() {
         return (AdherenceProcessFunction) ((CoBroadcastWithKeyedOperator<Tuple2<String, String>, EnrichedFillEvent, AlertLeadTimeUpdate, Void>)
                 harness.getOperator()).getUserFunction();
+    }
+
+    private EnrichedFillEvent reversalEvent(String claimId, String memberId, String drugClass,
+                                            LocalDate reversalDate, String originalClaimId) {
+        RxFillEvent event = new RxFillEvent(
+                EventType.REVERSAL, claimId, memberId, "NDC-1",
+                reversalDate, 0, new BigDecimal("30.00"),
+                "pharmacy-1", "rx-1", 2, Channel.RETAIL, originalClaimId);
+        return new EnrichedFillEvent(event, drugClass);
     }
 }
