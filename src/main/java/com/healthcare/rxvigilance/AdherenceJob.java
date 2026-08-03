@@ -33,7 +33,7 @@ public class AdherenceJob {
         env.execute("adherence-job");
     }
 
-    static void buildTopology(StreamExecutionEnvironment env, JobConfig jobConfig) {
+    public static void buildTopology(StreamExecutionEnvironment env, JobConfig jobConfig) {
         ParameterTool params = jobConfig.getParams();
         KafkaConnectionConfig kafkaConfig = jobConfig.getKafkaConfig();
         WatermarkConfig watermarkConfig = jobConfig.getWatermarkConfig();
