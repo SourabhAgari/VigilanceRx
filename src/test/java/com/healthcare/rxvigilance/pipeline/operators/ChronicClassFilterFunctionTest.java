@@ -88,6 +88,46 @@ class ChronicClassFilterFunctionTest {
                 .containsExactly(new EnrichedFillEvent(event, "CHRONIC_CARDIAC"));
     }
 
+    @Test
+    void eventForNewNdcArrivingWhileMapAlreadyPopulatedIsBufferedThenReplayed() throws Exception {
+        // map is non-empty from the start — this is what isEmpty() missed
+        harness.processBroadcastElement(new DrugClassRefUpdate(
+                "NDC-EXISTING", new DrugClassRef("CHRONIC_CARDIAC", true)), 0L);
+
+        RxFillEvent event = fillEvent("NDC-NEW", 1);
+        harness.processElement(event, 1L);
+
+        assertThat(harness.extractOutputValues()).isEmpty(); // must NOT be dropped yet
+
+        harness.processBroadcastElement(new DrugClassRefUpdate(
+                "NDC-NEW", new DrugClassRef("DIABETES", true)), 2L);
+
+        assertThat(harness.extractOutputValues())
+                .containsExactly(new EnrichedFillEvent(event, "DIABETES"));
+        assertThat(function().droppedCount()).isZero();
+    }
+
+    @Test
+    void unrelatedBroadcastUpdateDoesNotDropOtherBufferedEvents() throws Exception {
+        RxFillEvent eventA = fillEvent("NDC-A", 1);
+        RxFillEvent eventB = fillEvent("NDC-B", 1);
+        harness.processElement(eventA, 0L);
+        harness.processElement(eventB, 1L);
+
+        // resolves NDC-A only — NDC-B's event must survive in the buffer
+        harness.processBroadcastElement(new DrugClassRefUpdate(
+                "NDC-A", new DrugClassRef("CHRONIC_CARDIAC", true)), 2L);
+        assertThat(harness.extractOutputValues())
+                .containsExactly(new EnrichedFillEvent(eventA, "CHRONIC_CARDIAC"));
+
+        harness.processBroadcastElement(new DrugClassRefUpdate(
+                "NDC-B", new DrugClassRef("DIABETES", true)), 3L);
+        assertThat(harness.extractOutputValues())
+                .containsExactly(
+                        new EnrichedFillEvent(eventA, "CHRONIC_CARDIAC"),
+                        new EnrichedFillEvent(eventB, "DIABETES"));
+    }
+
     private RxFillEvent fillEvent(String ndcCode, int refillsAuthorized) {
         return new RxFillEvent(
                 EventType.FILL, "claim-1", "member-1", ndcCode,

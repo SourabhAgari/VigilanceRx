@@ -4,6 +4,7 @@ import com.healthcare.rxvigilance.domain.DrugClassRef;
 import com.healthcare.rxvigilance.domain.DrugClassRefUpdate;
 import com.healthcare.rxvigilance.domain.EnrichedFillEvent;
 import com.healthcare.rxvigilance.domain.RxFillEvent;
+import com.healthcare.rxvigilance.metrics.AdherenceMetricsReporter;
 import org.apache.flink.api.common.state.*;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
@@ -14,6 +15,9 @@ import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction;
 import org.apache.flink.util.Collector;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class ChronicClassFilterFunction
         extends BroadcastProcessFunction<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent>
@@ -39,7 +43,7 @@ public class ChronicClassFilterFunction
 
     @Override
     public void open(Configuration parameters) {
-        droppedCounter = getRuntimeContext().getMetricGroup().counter("chronicClassFilterDropped");
+        droppedCounter = AdherenceMetricsReporter.register(getRuntimeContext()).chronicFilterDropped();
     }
 
     @Override
@@ -48,7 +52,8 @@ public class ChronicClassFilterFunction
                                        EnrichedFillEvent>.ReadOnlyContext readOnlyContext,
                                Collector<EnrichedFillEvent> collector) throws Exception {
         ReadOnlyBroadcastState<String,DrugClassRef> broadcastState = readOnlyContext.getBroadcastState(NDC_CLASS_DESCRIPTOR);
-        if(isEmpty(broadcastState)) {
+        DrugClassRef ref = broadcastState.get(event.ndcCode());
+        if (ref == null) {
             bufferState.add(event);
             return;
         }
@@ -66,22 +71,22 @@ public class ChronicClassFilterFunction
         collector.collect(new EnrichedFillEvent(event,ref.drugClass()));
     }
 
-    private static boolean isEmpty(ReadOnlyBroadcastState<String,DrugClassRef> state) throws Exception {
-        return  !state.immutableEntries().iterator().hasNext();
-    }
+    public void processBroadcastElement(DrugClassRefUpdate drugClassRefUpdate, Context context, Collector<EnrichedFillEvent> collector) throws Exception {
+        BroadcastState<String, DrugClassRef> broadcastState = context.getBroadcastState(NDC_CLASS_DESCRIPTOR);
+        broadcastState.put(drugClassRefUpdate.ndcCode(), drugClassRefUpdate.drugClassRef());
 
-    @Override
-    public void processBroadcastElement(DrugClassRefUpdate drugClassRefUpdate,
-                                        BroadcastProcessFunction<RxFillEvent, DrugClassRefUpdate,
-                                                EnrichedFillEvent>.Context context,
-                                        Collector<EnrichedFillEvent> collector) throws Exception {
-        BroadcastState<String,DrugClassRef> broadcastState = context.getBroadcastState(NDC_CLASS_DESCRIPTOR);
-        broadcastState.put(drugClassRefUpdate.ndcCode(),drugClassRefUpdate.drugClassRef());
-
-        for(RxFillEvent buffer : bufferState.get()) {
-            filterAndEmit(buffer,broadcastState,collector);
+        List<RxFillEvent> remaining = new ArrayList<>();
+        for (RxFillEvent buffered : bufferState.get()) {
+            if (buffered.ndcCode().equals(drugClassRefUpdate.ndcCode())) {
+                filterAndEmit(buffered, broadcastState, collector);
+            } else {
+                remaining.add(buffered);
+            }
         }
         bufferState.clear();
+        for (RxFillEvent r : remaining) {
+            bufferState.add(r);
+        }
     }
 
     public long droppedCount() {

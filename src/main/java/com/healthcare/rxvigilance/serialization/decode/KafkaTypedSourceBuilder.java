@@ -11,6 +11,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.OutputTag;
 
@@ -80,7 +81,7 @@ public final class KafkaTypedSourceBuilder<T> {
         return this;
     }
 
-    public DataStream<T> build(StreamExecutionEnvironment env) {
+    public SingleOutputStreamOperator<T> build(StreamExecutionEnvironment env) {
         Objects.requireNonNull(kafkaConfig, "connection(...) must be called");
         Objects.requireNonNull(params, "params(...) must be called");
         Objects.requireNonNull(topicParamKey, "topic(...) must be called");

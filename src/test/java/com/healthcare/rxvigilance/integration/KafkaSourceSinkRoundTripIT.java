@@ -98,7 +98,7 @@ class KafkaSourceSinkRoundTripIT {
         WatermarkConfig watermarkConfig = new WatermarkConfig(Duration.ofHours(24), Duration.ofMinutes(5));
         ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.rx-fill-events", topic));
 
-        DataStream<RxFillEvent> stream = RxFillEventSource.build(env, kafkaConfig, watermarkConfig, params);
+        DataStream<RxFillEvent> stream = RxFillEventSource.build(env, kafkaConfig, watermarkConfig, params).events();
 
         List<RxFillEvent> results = stream.executeAndCollect(1);
         assertThat(results).containsExactly(event);
@@ -121,8 +121,8 @@ class KafkaSourceSinkRoundTripIT {
                 RED_PANDA_CONTAINER.getSchemaRegistryAddress(),
                 null, null, null, null);
         ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.ndc-drug-class-ref", topic));
-
-        DataStream<DrugClassRefUpdate> stream = DrugClassRefKafkaSource.build(env, kafkaConfig, params);
+        WatermarkConfig watermarkConfig = new WatermarkConfig(Duration.ofHours(24), Duration.ofMinutes(5));
+        DataStream<DrugClassRefUpdate> stream = DrugClassRefKafkaSource.build(env, kafkaConfig,watermarkConfig,  params);
 
         List<DrugClassRefUpdate> results = stream.executeAndCollect(1);
 
@@ -146,7 +146,8 @@ class KafkaSourceSinkRoundTripIT {
                 null, null, null, null);
         ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.alert-lead-time-ref", topic));
 
-        DataStream<AlertLeadTimeUpdate> stream = AlertLeadTimeKafkaSource.build(env, kafkaConfig, params);
+        WatermarkConfig watermarkConfig = new WatermarkConfig(Duration.ofHours(24), Duration.ofMinutes(5));
+        DataStream<AlertLeadTimeUpdate> stream = AlertLeadTimeKafkaSource.build(env, kafkaConfig,watermarkConfig, params);
 
         List<AlertLeadTimeUpdate> results = stream.executeAndCollect(1);
 

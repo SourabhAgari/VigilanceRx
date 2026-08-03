@@ -24,7 +24,7 @@ class RxFillEventSourceTest {
         WatermarkConfig watermarkConfig = new WatermarkConfig(Duration.ofHours(24), Duration.ofMinutes(5));
 
         DataStream<RxFillEvent> stream = RxFillEventSource.build(
-                env, kafkaConfig, watermarkConfig, ParameterTool.fromMap(Map.of()));
+                env, kafkaConfig, watermarkConfig, ParameterTool.fromMap(Map.of())).events();
 
         List<String> uids = env.getStreamGraph().getStreamNodes().stream()
                 .map(StreamNode::getTransformationUID)
