@@ -28,16 +28,19 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 public class AdherenceJob {
     public static void main(String[] args) throws Exception {
         JobConfig jobConfig = JobConfig.fromArgs(args);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        buildTopology(env, jobConfig);
+        env.execute("adherence-job");
+    }
+
+    static void buildTopology(StreamExecutionEnvironment env, JobConfig jobConfig) {
         ParameterTool params = jobConfig.getParams();
         KafkaConnectionConfig kafkaConfig = jobConfig.getKafkaConfig();
         WatermarkConfig watermarkConfig = jobConfig.getWatermarkConfig();
         StateBackEndConfig stateBackEndConfig = jobConfig.getStateBackEndConfig();
 
-        int defaultAlertDays = params.getInt("alert.lead.days.default",7);
+        int defaultAlertDays = params.getInt("alert.lead.days.default", 7);
 
-
-
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.getConfig().registerTypeWithKryoSerializer(EnrichedFillEvent.class, RecordKryoSerializer.class);
         env.getConfig().addDefaultKryoSerializer(Record.class, RecordKryoSerializer.class);
         StateBackEndConfig.configureRocksDbBackEnd(env);
@@ -98,7 +101,5 @@ public class AdherenceJob {
         fillEventDeadLetters.union(drugClassDeadLetters, leadTimeDeadLetters)
                 .sinkTo(AlertKafkaSinks.deadLetterSink(env, kafkaConfig, params))
                 .uid("dead-letter-sink");
-
-        env.execute("adherence-job");
     }
 }
