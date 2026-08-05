@@ -25,8 +25,9 @@ class DrugClassRefKafkaSourceTest {
         KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
                 "localhost:9092", "http://localhost:8081", null, null, null, null);
 
-        DataStream<DrugClassRefUpdate> stream = DrugClassRefKafkaSource.build(
+        DrugClassRefKafkaSource.DrugClassRefSourceResult result = DrugClassRefKafkaSource.build(
                 env, kafkaConfig, watermarkConfig, ParameterTool.fromMap(Map.of()));
+        DataStream<DrugClassRefUpdate> stream = result.events();
 
         List<String> uids = env.getStreamGraph().getStreamNodes().stream()
                 .map(StreamNode::getTransformationUID)

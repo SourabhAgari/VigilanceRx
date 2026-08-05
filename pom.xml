@@ -24,9 +24,14 @@
         <sonar.projectKey>SourabhAgari_VigilanceRx</sonar.projectKey>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <sonar.sources>pom.xml,src/main,infra,k8s,Dockerfile</sonar.sources>
-        <sonar.coverage.exclusions>src/main/java/com/healthcare/rxvigilance/SmokeJob.java,src/main/java/com/healthcare/rxvigilance/domain/RxFillEvent.java,src/main/java/com/healthcare/rxvigilance/domain/GapRiskAlert.java,src/main/java/com/healthcare/rxvigilance/domain/LapsedAlert.java,src/main/java/com/healthcare/rxvigilance/domain/PdcSnapshot.java,src/main/java/com/healthcare/rxvigilance/domain/DrugClassRef.java,src/main/java/com/healthcare/rxvigilance/domain/EventType.java,src/main/java/com/healthcare/rxvigilance/domain/Channel.java,src/main/java/com/healthcare/rxvigilance/serialization/mapper/GapRiskAlertAvroSerializer.java,src/main/java/com/healthcare/rxvigilance/serialization/mapper/LapsedAlertAvroSerializer.java,src/main/java/com/healthcare/rxvigilance/serialization/mapper/PdcSnapshotAvroSerializer.java,src/main/java/com/healthcare/rxvigilance/domain/EnrichedFillEvent.java,src/main/java/com/healthcare/rxvigilance/AdherenceJob.java
+        <sonar.coverage.exclusions>src/main/java/com/healthcare/rxvigilance/SmokeJob.java,src/main/java/com/healthcare/rxvigilance/domain/RxFillEvent.java,src/main/java/com/healthcare/rxvigilance/domain/GapRiskAlert.java,src/main/java/com/healthcare/rxvigilance/domain/LapsedAlert.java,src/main/java/com/healthcare/rxvigilance/domain/PdcSnapshot.java,src/main/java/com/healthcare/rxvigilance/domain/DrugClassRef.java,src/main/java/com/healthcare/rxvigilance/domain/EventType.java,src/main/java/com/healthcare/rxvigilance/domain/Channel.java,src/main/java/com/healthcare/rxvigilance/serialization/mapper/GapRiskAlertAvroSerializer.java,src/main/java/com/healthcare/rxvigilance/serialization/mapper/LapsedAlertAvroSerializer.java,src/main/java/com/healthcare/rxvigilance/serialization/mapper/PdcSnapshotAvroSerializer.java,src/main/java/com/healthcare/rxvigilance/domain/EnrichedFillEvent.java
         </sonar.coverage.exclusions>
         <sonar.scanner.skipJreProvisioning>true</sonar.scanner.skipJreProvisioning>
+        <sonar.coverage.jacoco.xmlReportPaths>
+            target/site/jacoco/jacoco.xml,target/site/jacoco-it/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
+        <jacocoArgLine></jacocoArgLine>
+        <jacocoItArgLine></jacocoItArgLine>
     </properties>
 
     <dependencies>
@@ -184,6 +189,7 @@
                 <version>3.2.5</version>   <!-- picks up *IT.java in `verify` -->
                 <configuration>
                     <argLine>
+                        @{jacocoItArgLine}
                         --add-opens=java.base/java.util=ALL-UNNAMED
                         --add-opens=java.base/java.time=ALL-UNNAMED
                     </argLine>
@@ -212,6 +218,7 @@
                 <version>0.8.12</version>
                 <executions>
                     <execution>
+                        <id>prepare-agent</id>
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
@@ -221,9 +228,25 @@
                     </execution>
                     <execution>
                         <id>report</id>
-                        <phase>verify</phase>
+                        <phase>test</phase>
                         <goals>
                             <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>prepare-agent-integration</id>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                        <configuration>
+                            <propertyName>jacocoItArgLine</propertyName>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>report-integration</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-integration</goal>
                         </goals>
                     </execution>
                 </executions>

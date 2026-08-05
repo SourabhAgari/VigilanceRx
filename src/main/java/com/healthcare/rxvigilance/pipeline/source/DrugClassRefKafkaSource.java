@@ -11,6 +11,7 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.OutputTag;
@@ -22,7 +23,12 @@ public class DrugClassRefKafkaSource {
     private DrugClassRefKafkaSource() {
     }
 
-    public static SingleOutputStreamOperator<DrugClassRefUpdate> build(StreamExecutionEnvironment env,
+    public record DrugClassRefSourceResult(
+            SingleOutputStreamOperator<DrugClassRefUpdate> events,
+            DataStream<KafkaSourceResult<DrugClassRefUpdate>> deadLetters) {
+    }
+
+    public static DrugClassRefSourceResult build(StreamExecutionEnvironment env,
                                                                        KafkaConnectionConfig kafkaConfig,
                                                                        WatermarkConfig watermarkConfig,
                                                                        ParameterTool params) {
@@ -37,11 +43,12 @@ public class DrugClassRefKafkaSource {
                 .sourceName("ndc-drug-class-ref")
                 .additionalKryoTypes(DrugClassRef.class)
                 .build(env);
-
-        return events
-                .assignTimestampsAndWatermarks(
-                        WatermarkStrategy.<DrugClassRefUpdate>noWatermarks()
-                                .withIdleness(watermarkConfig.idleness()))
+        DataStream<KafkaSourceResult<DrugClassRefUpdate>> deadLetters = events.getSideOutput(DEAD_LETTER_TAG);
+        SingleOutputStreamOperator<DrugClassRefUpdate> watermarked = events
+                .assignTimestampsAndWatermarks(WatermarkStrategy.<DrugClassRefUpdate>noWatermarks()
+                        .withIdleness(watermarkConfig.idleness()))
                 .uid("ndc-drug-class-ref-watermarks");
+
+        return new DrugClassRefSourceResult(watermarked, deadLetters);
     }
 }

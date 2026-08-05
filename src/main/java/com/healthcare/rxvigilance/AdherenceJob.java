@@ -54,10 +54,13 @@ public class AdherenceJob {
                 RxFillEventSource.build(env,kafkaConfig,watermarkConfig,params);
         DataStream<RxFillEvent> fillEvents = fillEventSourceResult.events();
 
-        SingleOutputStreamOperator<DrugClassRefUpdate> drugClassUpdates =
+        DrugClassRefKafkaSource.DrugClassRefSourceResult drugClassRefResult =
                 DrugClassRefKafkaSource.build(env, kafkaConfig, watermarkConfig, params);
-        SingleOutputStreamOperator<AlertLeadTimeUpdate> leadTimeUpdates =
+        SingleOutputStreamOperator<DrugClassRefUpdate> drugClassUpdates = drugClassRefResult.events();
+
+        AlertLeadTimeKafkaSource.AlertLeadRefSourceResult leadTimeResult =
                 AlertLeadTimeKafkaSource.build(env, kafkaConfig, watermarkConfig, params);
+        SingleOutputStreamOperator<AlertLeadTimeUpdate> leadTimeUpdates = leadTimeResult.events();
 
         BroadcastStream<DrugClassRefUpdate> drugClassBroadcast =
                 drugClassUpdates.broadcast(ChronicClassFilterFunction.NDC_CLASS_DESCRIPTOR);
@@ -92,11 +95,14 @@ public class AdherenceJob {
                 .uid("pdc-snapshots-sink");
 
         DataStream<DeadLetterRecord> fillEventDeadLetters =
-                fillEventSourceResult.deadLetters().map(DeadLetterRecord::from);
+                fillEventSourceResult.deadLetters().map(DeadLetterRecord::from)
+                        .uid("rx-fill-events-dead-letter-record");
         DataStream<DeadLetterRecord> drugClassDeadLetters =
-                drugClassUpdates.getSideOutput(DrugClassRefKafkaSource.DEAD_LETTER_TAG).map(DeadLetterRecord::from);
+                drugClassRefResult.deadLetters().map(DeadLetterRecord::from)
+                        .uid("ndc-drug-class-ref-dead-letter-record");
         DataStream<DeadLetterRecord> leadTimeDeadLetters =
-                leadTimeUpdates.getSideOutput(AlertLeadTimeKafkaSource.DEAD_LETTER_TAG).map(DeadLetterRecord::from);
+                leadTimeResult.deadLetters().map(DeadLetterRecord::from)
+                        .uid("alert-lead-time-ref-dead-letter-record");
 
         fillEventDeadLetters.union(drugClassDeadLetters, leadTimeDeadLetters)
                 .sinkTo(AlertKafkaSinks.deadLetterSink(env, kafkaConfig, params))
