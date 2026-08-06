@@ -25,8 +25,9 @@ class AlertLeadTimeKafkaSourceTest {
         KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
                 "localhost:9092", "http://localhost:8081", null, null, null, null);
 
-        DataStream<AlertLeadTimeUpdate> stream = AlertLeadTimeKafkaSource.build(
+        AlertLeadTimeKafkaSource.AlertLeadRefSourceResult result = AlertLeadTimeKafkaSource.build(
                 env, kafkaConfig, watermarkConfig, ParameterTool.fromMap(Map.of()));
+        DataStream<AlertLeadTimeUpdate> stream = result.events();
 
         List<String> uids = env.getStreamGraph().getStreamNodes().stream()
                 .map(StreamNode::getTransformationUID)

@@ -28,16 +28,19 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 public class AdherenceJob {
     public static void main(String[] args) throws Exception {
         JobConfig jobConfig = JobConfig.fromArgs(args);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        buildTopology(env, jobConfig);
+        env.execute("adherence-job");
+    }
+
+    public static void buildTopology(StreamExecutionEnvironment env, JobConfig jobConfig) {
         ParameterTool params = jobConfig.getParams();
         KafkaConnectionConfig kafkaConfig = jobConfig.getKafkaConfig();
         WatermarkConfig watermarkConfig = jobConfig.getWatermarkConfig();
         StateBackEndConfig stateBackEndConfig = jobConfig.getStateBackEndConfig();
 
-        int defaultAlertDays = params.getInt("alert.lead.days.default",7);
+        int defaultAlertDays = params.getInt("alert.lead.days.default", 7);
 
-
-
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.getConfig().registerTypeWithKryoSerializer(EnrichedFillEvent.class, RecordKryoSerializer.class);
         env.getConfig().addDefaultKryoSerializer(Record.class, RecordKryoSerializer.class);
         StateBackEndConfig.configureRocksDbBackEnd(env);
@@ -51,10 +54,13 @@ public class AdherenceJob {
                 RxFillEventSource.build(env,kafkaConfig,watermarkConfig,params);
         DataStream<RxFillEvent> fillEvents = fillEventSourceResult.events();
 
-        SingleOutputStreamOperator<DrugClassRefUpdate> drugClassUpdates =
+        DrugClassRefKafkaSource.DrugClassRefSourceResult drugClassRefResult =
                 DrugClassRefKafkaSource.build(env, kafkaConfig, watermarkConfig, params);
-        SingleOutputStreamOperator<AlertLeadTimeUpdate> leadTimeUpdates =
+        SingleOutputStreamOperator<DrugClassRefUpdate> drugClassUpdates = drugClassRefResult.events();
+
+        AlertLeadTimeKafkaSource.AlertLeadRefSourceResult leadTimeResult =
                 AlertLeadTimeKafkaSource.build(env, kafkaConfig, watermarkConfig, params);
+        SingleOutputStreamOperator<AlertLeadTimeUpdate> leadTimeUpdates = leadTimeResult.events();
 
         BroadcastStream<DrugClassRefUpdate> drugClassBroadcast =
                 drugClassUpdates.broadcast(ChronicClassFilterFunction.NDC_CLASS_DESCRIPTOR);
@@ -89,16 +95,17 @@ public class AdherenceJob {
                 .uid("pdc-snapshots-sink");
 
         DataStream<DeadLetterRecord> fillEventDeadLetters =
-                fillEventSourceResult.deadLetters().map(DeadLetterRecord::from);
+                fillEventSourceResult.deadLetters().map(DeadLetterRecord::from)
+                        .uid("rx-fill-events-dead-letter-record");
         DataStream<DeadLetterRecord> drugClassDeadLetters =
-                drugClassUpdates.getSideOutput(DrugClassRefKafkaSource.DEAD_LETTER_TAG).map(DeadLetterRecord::from);
+                drugClassRefResult.deadLetters().map(DeadLetterRecord::from)
+                        .uid("ndc-drug-class-ref-dead-letter-record");
         DataStream<DeadLetterRecord> leadTimeDeadLetters =
-                leadTimeUpdates.getSideOutput(AlertLeadTimeKafkaSource.DEAD_LETTER_TAG).map(DeadLetterRecord::from);
+                leadTimeResult.deadLetters().map(DeadLetterRecord::from)
+                        .uid("alert-lead-time-ref-dead-letter-record");
 
         fillEventDeadLetters.union(drugClassDeadLetters, leadTimeDeadLetters)
                 .sinkTo(AlertKafkaSinks.deadLetterSink(env, kafkaConfig, params))
                 .uid("dead-letter-sink");
-
-        env.execute("adherence-job");
     }
 }

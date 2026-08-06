@@ -122,7 +122,8 @@ class KafkaSourceSinkRoundTripIT {
                 null, null, null, null);
         ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.ndc-drug-class-ref", topic));
         WatermarkConfig watermarkConfig = new WatermarkConfig(Duration.ofHours(24), Duration.ofMinutes(5));
-        DataStream<DrugClassRefUpdate> stream = DrugClassRefKafkaSource.build(env, kafkaConfig,watermarkConfig,  params);
+        DrugClassRefKafkaSource.DrugClassRefSourceResult result = DrugClassRefKafkaSource.build(env, kafkaConfig, watermarkConfig, params);
+        DataStream<DrugClassRefUpdate> stream = result.events();
 
         List<DrugClassRefUpdate> results = stream.executeAndCollect(1);
 
@@ -147,7 +148,8 @@ class KafkaSourceSinkRoundTripIT {
         ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.alert-lead-time-ref", topic));
 
         WatermarkConfig watermarkConfig = new WatermarkConfig(Duration.ofHours(24), Duration.ofMinutes(5));
-        DataStream<AlertLeadTimeUpdate> stream = AlertLeadTimeKafkaSource.build(env, kafkaConfig,watermarkConfig, params);
+        AlertLeadTimeKafkaSource.AlertLeadRefSourceResult result = AlertLeadTimeKafkaSource.build(env, kafkaConfig, watermarkConfig, params);
+        DataStream<AlertLeadTimeUpdate> stream = result.events();
 
         List<AlertLeadTimeUpdate> results = stream.executeAndCollect(1);
 
@@ -302,7 +304,7 @@ class KafkaSourceSinkRoundTripIT {
 
     }
 
-    private void produceDrugClassRef(String topic, String ndcCode, DrugClassRef drugClassRef) throws Exception {
+    public void produceDrugClassRef(String topic, String ndcCode, DrugClassRef drugClassRef) throws Exception {
         Schema schema;
         try (InputStream avsc = getClass().getResourceAsStream("/drug-class-ref.avsc")) {
             schema = new Schema.Parser().parse(avsc);
