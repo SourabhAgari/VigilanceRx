@@ -23,14 +23,15 @@ public class AdherenceMetricsReporter {
     private final Counter lapsedAlertsEmitted;
 
     private AdherenceMetricsReporter(MetricGroup group) {
-        this.chronicFilterDropped = group.counter("chronicFilterDropped");
-        this.missingLeadTimeLookup = group.counter("missingLeadTimeLookup");
-        this.gapRiskAlertsEmitted = group.counter("gapRiskAlertsEmitted");
-        this.lapsedAlertsEmitted = group.counter("lapsedAlertsEmitted");
+        this.chronicFilterDropped = group.counter(CHRONIC_FILTER_DROPPED);
+        this.missingLeadTimeLookup = group.counter(MISSING_LEAD_TIME_LOOKUP);
+        this.gapRiskAlertsEmitted = group.counter(GAP_RISK_ALERTS_EMITTED);
+        this.lapsedAlertsEmitted = group.counter(LAPSED_ALERTS_EMITTED);
     }
 
     public static AdherenceMetricsReporter register(RuntimeContext runtimeContext) {
-        return new AdherenceMetricsReporter(runtimeContext.getMetricGroup().addGroup("adherence"));
+        return new AdherenceMetricsReporter(
+                runtimeContext.getMetricGroup().addGroup(METRIC_GROUP));
     }
 
     public Counter chronicFilterDropped() {
