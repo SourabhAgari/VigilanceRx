@@ -173,6 +173,18 @@ public class AdherenceProcessFunction extends
         return adherenceState.value();
     }
 
+    public long missingLeadTimeCount() {
+        return missingLeadTimeCounter.getCount();
+    }
+
+    public long gapRiskAlertsEmittedCount() {
+        return gapRiskAlertsEmittedCounter.getCount();
+    }
+
+    public long lapsedAlertsEmittedCount() {
+        return lapsedAlertsEmittedCounter.getCount();
+    }
+
     @Override
     public void onTimer(long timestamp, OnTimerContext ctx, Collector<Void> out) throws Exception {
         AdherenceState state = adherenceState.value();

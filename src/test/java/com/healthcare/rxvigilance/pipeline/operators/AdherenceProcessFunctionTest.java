@@ -138,6 +138,7 @@ class AdherenceProcessFunctionTest {
 
         assertThat(retailLeadDays).isEqualTo(3);
         assertThat(mailOrderLeadDays).isEqualTo(10);
+        assertThat(function().missingLeadTimeCount()).isZero();
     }
 
     @Test
@@ -165,6 +166,7 @@ class AdherenceProcessFunctionTest {
                 epochMillis(fillDate));
 
         assertThat(function().currentadherenceState().alertLeadDays()).isEqualTo(DEFAULT_LEAD_DAYS);
+        assertThat(function().missingLeadTimeCount()).isEqualTo(1);
     }
 
     private EnrichedFillEvent fillEvent(String claimId, String memberId, String drugClass,
@@ -220,6 +222,9 @@ class AdherenceProcessFunctionTest {
         AdherenceState finalState = function().currentadherenceState();
         assertThat(finalState.activeTimerTimestamp()).isNull();
         assertThat(finalState.activeTimerStage()).isNull();
+
+        assertThat(function().gapRiskAlertsEmittedCount()).isEqualTo(1);
+        assertThat(function().lapsedAlertsEmittedCount()).isEqualTo(1);
     }
 
     @Test
@@ -249,6 +254,7 @@ class AdherenceProcessFunctionTest {
 
         assertThat(harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)).isNullOrEmpty();
         assertThat(harness.numEventTimeTimers()).isZero(); // fired (Flink removes it regardless) but no-op, nothing cascaded
+        assertThat(function().gapRiskAlertsEmittedCount()).isZero();
     }
 
     @Test
@@ -325,6 +331,7 @@ class AdherenceProcessFunctionTest {
         assertThat(afterReversal.currentSupplyEndDate()).isNull();
         assertThat(afterReversal.activeTimerTimestamp()).isNull();
         assertThat(afterReversal.activeTimerStage()).isNull();
+        assertThat(function().lapsedAlertsEmittedCount()).isEqualTo(1);
     }
 
     @Test
