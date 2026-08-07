@@ -33,7 +33,7 @@ resource "redpanda_topic" "topics" {
 
   name = each.key
   partition_count = each.value.partitions
-  cluster_api_url = redpanda_serverless_cluster.main.cluster_api_url
+  cluster_api_url = redpanda_serverless_cluster.main.dataplane_api.url
   configuration = each.value.config
 
   # replication_factor omitted: serverless clusters own replication.
@@ -45,7 +45,7 @@ resource "redpanda_user" "flink" {
   password_wo         = var.redpanda_flink_password
   password_wo_version = 1 # bump to rotate the password
   mechanism           = "scram-sha-256"
-  cluster_api_url     = redpanda_serverless_cluster.main.cluster_api_url
+  cluster_api_url     = redpanda_serverless_cluster.main.dataplane_api.url
 }
 
 locals {
@@ -73,7 +73,7 @@ resource "redpanda_acl" "flink" {
   host                  = "*"
   operation             = each.value.op
   permission_type       = "ALLOW"
-  cluster_api_url       = redpanda_serverless_cluster.main.cluster_api_url
+  cluster_api_url       = redpanda_serverless_cluster.main.dataplane_api.url
 }
 
 locals {
