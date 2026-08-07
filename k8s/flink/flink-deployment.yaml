@@ -42,6 +42,10 @@ spec:
                     key: sasl-password
 
   taskManager:
+    # 2048m carried over from the Phase 2 smoke job, which held no state.
+    # AdherenceJob uses RocksDB, which takes memory outside the JVM heap
+    # (~635m managed of this 2048m). Sized properly in #101 against real
+    # node Allocatable figures — see CLAUDE.md §10.
     resource:
       memory: "2048m"
       cpu: 1
