@@ -1,0 +1,5 @@
+# Send only what the image build needs. Without this, docker build ships
+  # ~396 MB to the daemon, 353 MB of it Terraform provider binaries.
+  *
+  !pom.xml
+  !src

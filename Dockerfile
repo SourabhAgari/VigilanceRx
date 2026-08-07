@@ -1,20 +1,23 @@
 FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /build
-COPY pom.xml .
 
-# download the dependency but it will be stored inside
-# will be donloaded in /root/.m2/repository/
+# pom.xml alone first. This layer is reused unless dependencies change,
+# so editing Java code does not re-download anything.
+COPY pom.xml .
 RUN mvn -B dependency:go-offline
 
-# copy src folder into src folder inside build folder
 COPY src ./src
 
-# below command creates a fat jar or uber jar inside target folder under
-# build directory
-RUN mvn clean package -DskipTests
+# No `clean`: target/ does not exist in a fresh layer.
+ # Rename to a fixed filename so the runtime stage carries no version number.
+RUN mvn -B package -DskipTests && \
+      mv target/rx-vigilance-*.jar /build/rx-vigilance.jar
+
 
 # ------ runtime stage -----------#
-FROM flink:1.18-java17
+# Pinned to match <flink.version> in pom.xml. A floating 1.18 tag could
+# ship a different patch release than the job was built against.
+FROM flink:1.18.1-java17
 
-COPY --from=builder /build/target/rx-vigilance-1.0.0-SNAPSHOT.jar /opt/flink/usrlib/rx-vigilance.jar
+COPY --chown=flink:flink --from=builder /build/rx-vigilance.jar /opt/flink/usrlib/rx-vigilance.jar
