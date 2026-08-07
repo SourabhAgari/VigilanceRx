@@ -11,6 +11,7 @@ spec:
 
   flinkConfiguration:
     taskmanager.numberOfTaskSlots: "1"
+    state.savepoints.dir: gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-savepoints
 
   jobManager:
     resource:
@@ -50,7 +51,7 @@ spec:
     jarURI: local:///opt/flink/usrlib/rx-vigilance.jar
     entryClass: com.healthcare.rxvigilance.AdherenceJob
     parallelism: 1
-    upgradeMode: stateless
+    upgradeMode: savepoint
     args:
       - "--kafka.brokers"
       - "d9qk5le640j3p0dv7g0g.any.us-east-1.mpx.prd.cloud.redpanda.com:9092"
