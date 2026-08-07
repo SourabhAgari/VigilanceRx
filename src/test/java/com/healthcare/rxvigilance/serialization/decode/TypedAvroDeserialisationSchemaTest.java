@@ -9,8 +9,11 @@ import org.apache.flink.util.Collector;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -25,7 +28,7 @@ class TypedAvroDeserialisationSchemaTest {
 
         TypedAvroDeserialisationSchema<DrugClassRefUpdate> schema =
                 new TypedAvroDeserialisationSchema<>(
-                        UNREACHABLE_REGISTRY_URL, new DrugClassRefMapper(), producedType);
+                        UNREACHABLE_REGISTRY_URL, new DrugClassRefMapper(), Map.of(),producedType);
 
         assertThat(schema.getProducedType()).isEqualTo(producedType);
     }
@@ -62,7 +65,7 @@ class TypedAvroDeserialisationSchemaTest {
 
     private TypedAvroDeserialisationSchema<DrugClassRefUpdate> schemaAgainstUnreachableRegistry() {
         return new TypedAvroDeserialisationSchema<>(
-                UNREACHABLE_REGISTRY_URL, new DrugClassRefMapper(),
+                UNREACHABLE_REGISTRY_URL, new DrugClassRefMapper(),Map.of(),
                 TypeInformation.of(new TypeHint<KafkaSourceResult<DrugClassRefUpdate>>() { }));
     }
 
@@ -80,6 +83,29 @@ class TypedAvroDeserialisationSchemaTest {
                 // own any external resources, so close() is intentionally a no-op.
             }
         };
+    }
+
+    /**
+     * KafkaRecordDeserializationSchema extends Serializable — Flink ships this to every TaskManager.
+     * KafkaConnectionConfig is a plain record and is NOT Serializable, so registry credentials must
+     * travel as a plain map. Mirrors the encode-side guard in TypedAvroSerializationSchemaTest (#109).
+     */
+    @Test
+    void isJavaSerializableWithRegistryCredentials() throws Exception {
+        TypedAvroDeserialisationSchema<DrugClassRefUpdate> schema =
+                new TypedAvroDeserialisationSchema<>(
+                        UNREACHABLE_REGISTRY_URL,
+                        new DrugClassRefMapper(),
+                        Map.of("basic.auth.credentials.source", "USER_INFO",
+                                "schema.registry.basic.auth.user.info", "user:pass"),
+                        TypeInformation.of(new TypeHint<KafkaSourceResult<DrugClassRefUpdate>>() { }));
+
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
+            out.writeObject(schema);
+        }
+
+        assertThat(bytes.toByteArray()).isNotEmpty();
     }
 
 }
