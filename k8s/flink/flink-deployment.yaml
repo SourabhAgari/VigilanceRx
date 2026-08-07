@@ -1,10 +1,10 @@
 apiVersion: flink.apache.org/v1beta1
 kind: FlinkDeployment
 metadata:
-  name: rx-vigilance-smoke
+  name: rx-vigilance
   namespace: rx-vigilance
 spec:
-  image: ghcr.io/sourabhagari/rx-vigilance:smoke
+  image: ghcr.io/sourabhagari/rx-vigilance:main
   imagePullPolicy: Always
   flinkVersion: v1_18
   serviceAccount: flink
@@ -48,7 +48,7 @@ spec:
 
   job:
     jarURI: local:///opt/flink/usrlib/rx-vigilance.jar
-    entryClass: com.healthcare.rxvigilance.SmokeJob
+    entryClass: com.healthcare.rxvigilance.AdherenceJob
     parallelism: 1
     upgradeMode: stateless
     args:
