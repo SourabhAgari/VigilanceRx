@@ -1,16 +1,17 @@
 apiVersion: flink.apache.org/v1beta1
 kind: FlinkDeployment
 metadata:
-  name: rx-vigilance-smoke
+  name: rx-vigilance
   namespace: rx-vigilance
 spec:
-  image: ghcr.io/sourabhagari/rx-vigilance:smoke
+  image: ghcr.io/sourabhagari/rx-vigilance:main
   imagePullPolicy: Always
   flinkVersion: v1_18
   serviceAccount: flink
 
   flinkConfiguration:
     taskmanager.numberOfTaskSlots: "1"
+    state.savepoints.dir: gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-savepoints
 
   jobManager:
     resource:
@@ -41,6 +42,10 @@ spec:
                     key: sasl-password
 
   taskManager:
+    # 2048m carried over from the Phase 2 smoke job, which held no state.
+    # AdherenceJob uses RocksDB, which takes memory outside the JVM heap
+    # (~635m managed of this 2048m). Sized properly in #101 against real
+    # node Allocatable figures — see CLAUDE.md §10.
     resource:
       memory: "2048m"
       cpu: 1
@@ -48,13 +53,9 @@ spec:
 
   job:
     jarURI: local:///opt/flink/usrlib/rx-vigilance.jar
-    entryClass: com.healthcare.rxvigilance.SmokeJob
+    entryClass: com.healthcare.rxvigilance.AdherenceJob
     parallelism: 1
-    upgradeMode: stateless
+    upgradeMode: savepoint
     args:
-      - "--kafka.brokers"
-      - "d9qk5le640j3p0dv7g0g.any.us-east-1.mpx.prd.cloud.redpanda.com:9092"
-      - "--schema.registry.url"
-      - "https://d9qk5le640j3p0dv7g0g.registry.us-east-1.mpx.prd.cloud.redpanda.com"
-      - "--checkpoint.dir"
-      - "gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-ckpt"
+      - "--profile"
+      - "gke"
