@@ -6,6 +6,9 @@ resources:
   - flink-rbac.yaml
   - flink-deployment.yaml
 
+configurations:
+  - imagetransformer.yaml
+
 images:
   - name: ghcr.io/sourabhagari/rx-vigilance
     newTag: main
