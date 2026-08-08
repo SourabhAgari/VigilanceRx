@@ -6,15 +6,14 @@ name: Deploy
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
+    # The deploy job commits back to main. Without this, that commit would
+    # retrigger this workflow, which would commit again — a loop.
+    paths-ignore:
+      - 'k8s/**'
 
-# The repo default is read-only.
-# Grant only what this workflow needs.
-#
-# contents: write is added in step 3, when it starts
-# committing the tag back.
-permissions:
-  contents: read
-  packages: write
+
 
 env:
   # Hardcoded, and lowercase, on purpose.
@@ -28,6 +27,9 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -49,3 +51,31 @@ jobs:
           docker build -t "$IMAGE:$TAG" .
           docker push "$IMAGE:$TAG"
           echo "pushed $IMAGE:$TAG"
+
+  deploy:
+      needs: build-and-push
+      runs-on: ubuntu-latest
+      environment: production
+      permissions:
+        contents: write
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Point kustomization at the new image
+          env:
+           TAG: ${{ github.sha }}
+           IMAGE: ghcr.io/sourabhagari/rx-vigilance
+          run: |
+            yq -i '(.images[] | select(.name == strenv(IMAGE)) | .newTag) = strenv(TAG)' \
+            k8s/flink/kustomization.yaml
+
+        - name: Commit and push
+          env:
+            TAG: ${{ github.sha }}
+          run: |
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add k8s/flink/kustomization.yaml
+            git diff --staged --quiet && { echo "tag unchanged, nothing to commit"; exit 0; }
+            git commit -m "deploy: rx-vigilance:$TAG"
+            git push origin HEAD:main
