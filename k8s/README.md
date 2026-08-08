@@ -7,13 +7,24 @@ and is NOT managed from this directory.
   |---|---|                                                                                                                                                                     
 | `namespace.yaml` | `rx-vigilance` namespace — all workload objects live here |                                                                                              
 | `flink/flink-serviceaccount.yaml` | KSA `flink` with the Workload Identity annotation → GSA `rx-vigilance-sa` (GCS checkpoint access, no key files) |                       
-| `flink/flink-deployment.yaml` | FlinkDeployment CR (arrives in Phase 2) |
-| `flink/flink-rbac.yaml` | Role + RoleBinding — `flink` KSA's Kubernetes API permissions (separate from Workload Identity) |                                                                                                   
+| `flink/flink-deployment.yaml` | FlinkDeployment CR — synced by Argo CD from #114, not applied by hand |
+| `flink/flink-rbac.yaml` | Role + RoleBinding — `flink` KSA's Kubernetes API permissions (separate from Workload Identity) |
+| `flink/kustomization.yaml` | Kustomize entrypoint for `k8s/flink/` — lets CI set the image tag with `kustomize edit set image` (#103) |                                                                                                   
 
-Apply order (namespace first — everything else is namespaced):
+Bringing up a fresh cluster:
 
-      kubectl apply -f k8s/namespace.yaml                                                                                                                                       
-      kubectl apply -f k8s/flink/flink-serviceaccount.yaml 
+      source ~/.redpanda-cloud.env
+      make infra-up
+
+That runs Terraform, applies the namespace, and creates both Secrets. It does
+NOT apply anything under `k8s/flink/` — Argo CD owns that directory from #114
+(D54), and two things with authority over the same resources is exactly what
+GitOps exists to remove.
+
+The namespace stays outside Argo CD on purpose: the AppProject sets
+`clusterResourceWhitelist: []`, so Argo CD cannot create cluster-scoped
+resources. It operates inside the namespace, so it must not be able to create
+the namespace.
 
 ## Kafka credentials Secret (manual — never committed)
 
@@ -42,6 +53,31 @@ every `terraform destroy` and must be recreated on every fresh cluster —
 Verify without printing values:
 
       kubectl describe secret kafka-credentials -n rx-vigilance                                                                                                                 
+
+## GHCR pull Secret (manual — never committed)
+
+The image lives in a private GHCR package, so the pod needs a pull credential.
+`flink-deployment.yaml` references it as `imagePullSecrets: [ghcr-pull]`.
+
+The token is a GitHub **classic** PAT with `read:packages` and nothing else. It
+lives in `~/.redpanda-cloud.env` as `GHCR_READ_TOKEN`, beside the Redpanda
+password. `make infra-up` creates the Secret from it.
+
+By hand, if needed:
+
+      kubectl create secret docker-registry ghcr-pull \
+        --namespace rx-vigilance \
+        --docker-server=ghcr.io \
+        --docker-username=<github-user> \
+        --docker-password="$GHCR_READ_TOKEN"
+
+Recovery differs between the two Secrets, and the difference matters:
+
+- **GHCR token lost** — regenerate it. GitHub never shows a PAT twice, but
+  making a new one costs nothing.
+- **Redpanda password lost** — it cannot be recovered. Terraform stores it
+  write-only (`password_wo`) and the console will not display it. Bump
+  `password_wo_version` in `redpanda.tf` and re-apply to rotate.
 
 ## Notes
 
