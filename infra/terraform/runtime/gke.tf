@@ -23,7 +23,7 @@ resource "google_container_node_pool" "primary" {
   project    = var.project_id
   cluster    = google_container_cluster.vigilance-rx.name
   location   = var.zone
-  node_count = 1 # D7: single node; ~13.3 GB Allocatable holds the full stack
+  node_count = 2 # D7: single node; ~13.3 GB Allocatable holds the full stack
 
   node_config {
     machine_type = "e2-standard-4"
