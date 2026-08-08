@@ -1,0 +1,10 @@
+# Kustomize's built-in image transformer only knows standard container paths
+# (spec/template/spec/containers[]/image and similar). FlinkDeployment is a
+# custom resource whose image sits at spec.image, so without this the
+# `images:` block below is silently ignored — it renders, it just does
+# nothing. Verified: without this file, changing newTag has no effect on
+# the rendered output.
+
+images:
+  - path: spec/image
+    kind: FlinkDeployment
