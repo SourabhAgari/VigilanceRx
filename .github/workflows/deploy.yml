@@ -1,0 +1,51 @@
+name: Deploy
+
+# Manual only for now.
+# The push trigger arrives in step 3, together with the
+# paths-ignore that stops the bot commit from retriggering this workflow.
+
+on:
+  workflow_dispatch:
+
+# The repo default is read-only.
+# Grant only what this workflow needs.
+#
+# contents: write is added in step 3, when it starts
+# committing the tag back.
+permissions:
+  contents: read
+  packages: write
+
+env:
+  # Hardcoded, and lowercase, on purpose.
+  # GHCR rejects uppercase repository names and github.repository_owner is
+  # "SourabhAgari". This string must match images[].name in
+  # k8s/flink/kustomization.yaml exactly, or the
+  # `kustomize edit set image` in step 3 silently matches nothing and the
+  # deploy quietly does nothing at all.
+  IMAGE: ghcr.io/sourabhagari/rx-vigilance
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+      # No JDK or Maven step: the Dockerfile's builder stage runs `mvn package`
+      # itself, so building the jar here too would compile the project twice.
+      # No --platform either: GitHub runners are amd64, same as the GKE nodes
+      # (k8s/README.md records why that matters for local builds).
+      - name: Build and push
+        env:
+          TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$IMAGE:$TAG" .
+          docker push "$IMAGE:$TAG"
+          echo "pushed $IMAGE:$TAG"
