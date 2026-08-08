@@ -47,7 +47,7 @@ spec:
     # (~635m managed of this 2048m). Sized properly in #101 against real
     # node Allocatable figures — see CLAUDE.md §10.
     resource:
-      memory: "2048m"
+      memory: "4096m"
       cpu: 1
     podTemplate: *podTemplate
 
