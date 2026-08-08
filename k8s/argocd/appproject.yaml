@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: rx-vigilance
+  namespace: argocd
+spec:
+  description: >
+    Scopes Argo CD to the Flink adherence job only. Deliberately narrow:
+    this is what makes the prune reasoning in D54 safe.
+
+  sourceRepos:
+    - https://github.com/SourabhAgari/VigilanceRx
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: rx-vigilance
+
+  # Empty on purpose. Argo CD may not create Namespaces, ClusterRoles or CRDs.
+  # The rx-vigilance namespace is hand-created in #104, not synced.
+  clusterResourceWhitelist: [ ]
+
+  # Exactly what k8s/flink/ contains today. Adding a kind here is a deliberate
+  # act; a sync that needs an unlisted kind fails loudly instead of widening
+  # Argo CD's reach by accident.
+  namespaceResourceWhitelist:
+    - group: flink.apache.org
+      kind: FlinkDeployment
+    - group: ""
+      kind: ServiceAccount
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
