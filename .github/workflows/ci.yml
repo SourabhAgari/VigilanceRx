@@ -4,6 +4,16 @@ on:
   pull_request:
   push:
     branches: [main]
+    # deploy.yml commits the image tag here. Without this, a one-line YAML
+    # change would run the full build, test and Sonar cycle for no signal.
+    paths-ignore:
+      - 'k8s/**'
+
+# The repo default is read-only. deploy.yml showed a workflow can still grant
+# itself more (it pushes to GHCR with packages: write), so this line is not
+# redundant: it keeps CI at least privilege even if that default changes.
+permissions:
+  contents: read
 
 jobs:
   build:

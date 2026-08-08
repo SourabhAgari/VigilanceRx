@@ -1,33 +1,33 @@
 name: Deploy
 
-# Manual only for now.
-# The push trigger arrives in step 3, together with the
-# paths-ignore that stops the bot commit from retriggering this workflow.
+# Runs on every push to main, and manually via workflow_dispatch.
+# The paths-ignore below is what stops the deploy job's own commit from
+# retriggering this workflow.
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
+    # The deploy job commits back to main. Without this, that commit would
+    # retrigger this workflow, which would commit again — a loop.
+    paths-ignore:
+      - 'k8s/**'
 
-# The repo default is read-only.
-# Grant only what this workflow needs.
-#
-# contents: write is added in step 3, when it starts
-# committing the tag back.
-permissions:
-  contents: read
-  packages: write
+
 
 env:
-  # Hardcoded, and lowercase, on purpose.
-  # GHCR rejects uppercase repository names and github.repository_owner is
-  # "SourabhAgari". This string must match images[].name in
-  # k8s/flink/kustomization.yaml exactly, or the
-  # `kustomize edit set image` in step 3 silently matches nothing and the
-  # deploy quietly does nothing at all.
+  # Hardcoded, and lowercase, on purpose. GHCR rejects uppercase repository
+  # names and github.repository_owner is "SourabhAgari". This string must match
+  # images[].name in k8s/flink/kustomization.yaml exactly, or the yq select in
+  # the deploy job matches nothing and the deploy silently does nothing at all.
   IMAGE: ghcr.io/sourabhagari/rx-vigilance
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -49,3 +49,31 @@ jobs:
           docker build -t "$IMAGE:$TAG" .
           docker push "$IMAGE:$TAG"
           echo "pushed $IMAGE:$TAG"
+
+  deploy:
+      needs: build-and-push
+      runs-on: ubuntu-latest
+      environment: production
+      permissions:
+        contents: write
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Point kustomization at the new image
+          env:
+           TAG: ${{ github.sha }}
+           IMAGE: ghcr.io/sourabhagari/rx-vigilance
+          run: |
+            yq -i '(.images[] | select(.name == strenv(IMAGE)) | .newTag) = strenv(TAG)' \
+            k8s/flink/kustomization.yaml
+
+        - name: Commit and push
+          env:
+            TAG: ${{ github.sha }}
+          run: |
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add k8s/flink/kustomization.yaml
+            git diff --staged --quiet && { echo "tag unchanged, nothing to commit"; exit 0; }
+            git commit -m "deploy: rx-vigilance:$TAG"
+            git push origin HEAD:main
