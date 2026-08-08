@@ -5,6 +5,14 @@ on:
   push:
     branches: [main]
 
+# The repo default is now read-write (raised so deploy.yml could push to
+# GHCR). This workflow needs neither — checkout, Maven, Sonar and a local
+# docker build are all read-only operations. Declaring it explicitly means
+# CI does not inherit write access it has no use for.
+
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
