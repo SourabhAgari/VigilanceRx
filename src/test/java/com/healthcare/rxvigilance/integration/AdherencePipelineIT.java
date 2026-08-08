@@ -91,8 +91,10 @@ class AdherencePipelineIT {
         String leadTimeTopic = "alert-lead-time-ref-" + UUID.randomUUID();
         String gapRiskTopic = "gap-risk-alerts-" + UUID.randomUUID();
         String pdcTopic = "pdc-snapshots-" + UUID.randomUUID();
+        String lapsedTopic = "lapsed-alerts-" + UUID.randomUUID();
 
         registerSubject(gapRiskTopic, "/gap-risk-alert.avsc");
+        registerSubject(lapsedTopic, "/lapsed-alert.avsc");
         registerSubject(pdcTopic, "/pdc-snapshot.avsc");
 
         produceDrugClassRef(ndcTopic, "00093-7424-56", new DrugClassRef("DIABETES", true));
@@ -109,7 +111,7 @@ class AdherencePipelineIT {
                 "kafka.topic.alert-lead-time-ref", leadTimeTopic,
                 "kafka.topic.gap-risk-alerts", gapRiskTopic,
                 "kafka.topic.dead-letter",   "dead-letter-"   + UUID.randomUUID(),
-                "kafka.topic.lapsed-alerts", "lapsed-alerts-" + UUID.randomUUID(),
+                "kafka.topic.lapsed-alerts", lapsedTopic,
                 "kafka.topic.pdc-snapshots", pdcTopic), tempDir);
 
         // PdcSnapshot is emitted synchronously from processElement, so this proves the first fill
@@ -144,7 +146,9 @@ class AdherencePipelineIT {
         String leadTimeTopic = "alert-lead-time-ref-" + UUID.randomUUID();
         String lapsedTopic = "lapsed-alerts-" + UUID.randomUUID();
         String pdcTopic = "pdc-snapshots-" + UUID.randomUUID();
+        String gapRiskTopic = "gap-risk-alerts-" + UUID.randomUUID();
 
+        registerSubject(gapRiskTopic, "/gap-risk-alert.avsc");
         registerSubject(lapsedTopic, "/lapsed-alert.avsc");
         registerSubject(pdcTopic, "/pdc-snapshot.avsc");
 
@@ -169,7 +173,7 @@ class AdherencePipelineIT {
                 "kafka.topic.alert-lead-time-ref", leadTimeTopic,
                 "kafka.topic.lapsed-alerts", lapsedTopic,
                 "kafka.topic.pdc-snapshots", pdcTopic,
-                "kafka.topic.gap-risk-alerts", "gap-risk-alerts-" + UUID.randomUUID(),
+                "kafka.topic.gap-risk-alerts", gapRiskTopic,
                 "kafka.topic.dead-letter", "dead-letter-" + UUID.randomUUID()), tempDir);
 
         GenericRecord alert = consumeOne(lapsedTopic);
@@ -183,6 +187,13 @@ class AdherencePipelineIT {
         String ndcTopic = "ndc-drug-class-ref-" + UUID.randomUUID();
         String leadTimeTopic = "alert-lead-time-ref-" + UUID.randomUUID();
         String deadLetterTopic = "dead-letter-" + UUID.randomUUID();
+        String gapRiskTopic = "gap-risk-alerts-" + UUID.randomUUID();
+        String lapsedTopic = "lapsed-alerts-" + UUID.randomUUID();
+        String pdcTopic = "pdc-snapshots-" + UUID.randomUUID();
+
+        registerSubject(gapRiskTopic, "/gap-risk-alert.avsc");
+        registerSubject(lapsedTopic, "/lapsed-alert.avsc");
+        registerSubject(pdcTopic, "/pdc-snapshot.avsc");
 
         produceMalformed(fillTopic, "not-valid-avro-fill");
         produceMalformed(ndcTopic, "not-valid-avro-ndc");
@@ -193,9 +204,9 @@ class AdherencePipelineIT {
                 "kafka.topic.ndc-drug-class-ref", ndcTopic,
                 "kafka.topic.alert-lead-time-ref", leadTimeTopic,
                 "kafka.topic.dead-letter", deadLetterTopic,
-                "kafka.topic.gap-risk-alerts", "gap-risk-alerts-" + UUID.randomUUID(),
-                "kafka.topic.pdc-snapshots", "pdc-snapshots-" + UUID.randomUUID(),
-                "kafka.topic.lapsed-alerts", "lapsed-alerts-" + UUID.randomUUID()), tempDir);
+                "kafka.topic.gap-risk-alerts", gapRiskTopic,
+                "kafka.topic.pdc-snapshots", pdcTopic,
+                "kafka.topic.lapsed-alerts", lapsedTopic), tempDir);
 
         List<String> errorMessages = consumeRaw(deadLetterTopic, 3);
         assertThat(errorMessages).hasSize(3).doesNotContainNull();
