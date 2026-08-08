@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches: [main]
+    # deploy.yml commits the image tag here. Without this, a one-line YAML
+    # change would run the full build, test and Sonar cycle for no signal.
+    paths-ignore:
+      - 'k8s/**'
 
 # The repo default is now read-write (raised so deploy.yml could push to
 # GHCR). This workflow needs neither — checkout, Maven, Sonar and a local
