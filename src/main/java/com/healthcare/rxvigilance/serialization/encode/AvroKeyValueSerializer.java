@@ -20,7 +20,7 @@ public class AvroKeyValueSerializer<T> {
                                   String schemaRegistryUrl) {
         this.avroSerializer = new KafkaAvroSerializer(schemaRegistryClient,
                 Map.of(
-                        AbstractKafkaSchemaSerDeConfig.AUTO_REGISTER_SCHEMAS, true,
+                        AbstractKafkaSchemaSerDeConfig.AUTO_REGISTER_SCHEMAS, false,
                         AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryUrl));
         this.serializer = avroSerializer;
         this.topic = topic;
