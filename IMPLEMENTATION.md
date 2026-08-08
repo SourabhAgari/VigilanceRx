@@ -987,8 +987,9 @@ bullets originally here are now #99, #103, #104 and #105.
 - [ ] #104 Re-`apply` runtime Terraform; recreate the hand-made
       `kafka-credentials` and `ghcr-pull` Secrets (§9, D8 — never in
       Terraform state)
-- [ ] #30b Create the Argo CD `Application` (`path: k8s/flink`, automated
-      prune + selfHeal). After first sync, confirm both Secrets still exist
+- [ ] #114 Create the Argo CD `Application` (`path: k8s/flink`, automated
+      prune + selfHeal). After first sync, confirm both Secrets still exist —
+      the check that proves D54's prune reasoning rather than assuming it
 - [ ] #105 Verify job healthy on GKE against cloud Redpanda through one
       completed checkpoint cycle
 
