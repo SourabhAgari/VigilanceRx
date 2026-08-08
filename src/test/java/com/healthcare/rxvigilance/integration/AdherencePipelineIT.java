@@ -6,6 +6,9 @@ import com.healthcare.rxvigilance.domain.DrugClassRef;
 import com.healthcare.rxvigilance.domain.RxFillEvent;
 import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
+import io.confluent.kafka.schemaregistry.avro.AvroSchema;
+import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.avro.Conversions;
@@ -89,6 +92,9 @@ class AdherencePipelineIT {
         String gapRiskTopic = "gap-risk-alerts-" + UUID.randomUUID();
         String pdcTopic = "pdc-snapshots-" + UUID.randomUUID();
 
+        registerSubject(gapRiskTopic, "/gap-risk-alert.avsc");
+        registerSubject(pdcTopic, "/pdc-snapshot.avsc");
+
         produceDrugClassRef(ndcTopic, "00093-7424-56", new DrugClassRef("DIABETES", true));
         produceAlertLeadTime(leadTimeTopic, "DIABETES|RETAIL", 10);
         RxFillEvent fill = new RxFillEvent(
@@ -137,6 +143,10 @@ class AdherencePipelineIT {
         String ndcTopic = "ndc-drug-class-ref-" + UUID.randomUUID();
         String leadTimeTopic = "alert-lead-time-ref-" + UUID.randomUUID();
         String lapsedTopic = "lapsed-alerts-" + UUID.randomUUID();
+        String pdcTopic = "pdc-snapshots-" + UUID.randomUUID();
+
+        registerSubject(lapsedTopic, "/lapsed-alert.avsc");
+        registerSubject(pdcTopic, "/pdc-snapshot.avsc");
 
         produceDrugClassRef(ndcTopic, "00093-7424-56", new DrugClassRef("DIABETES", true));
         produceAlertLeadTime(leadTimeTopic, "DIABETES|RETAIL", 10);
@@ -158,8 +168,8 @@ class AdherencePipelineIT {
                 "kafka.topic.ndc-drug-class-ref", ndcTopic,
                 "kafka.topic.alert-lead-time-ref", leadTimeTopic,
                 "kafka.topic.lapsed-alerts", lapsedTopic,
+                "kafka.topic.pdc-snapshots", pdcTopic,
                 "kafka.topic.gap-risk-alerts", "gap-risk-alerts-" + UUID.randomUUID(),
-                "kafka.topic.pdc-snapshots", "pdc-snapshots-" + UUID.randomUUID(),
                 "kafka.topic.dead-letter", "dead-letter-" + UUID.randomUUID()), tempDir);
 
         GenericRecord alert = consumeOne(lapsedTopic);
@@ -242,6 +252,19 @@ class AdherencePipelineIT {
 
         try (KafkaProducer<String, GenericRecord> producer = new KafkaProducer<>(props)) {
             producer.send(new ProducerRecord<>(topic, event.claimId(), genericRecord)).get();
+        }
+    }
+
+    /**
+     * With AUTO_REGISTER_SCHEMAS off (#109), the job looks a schema up rather than creating it.
+     * These tests use randomised topic names, so no external tool can pre-register the subject —
+     * the test must do it, exactly as Terraform does for the real topics.
+     */
+    private static void registerSubject(String topic, String avscResource) throws Exception {
+        SchemaRegistryClient client = new CachedSchemaRegistryClient(
+                RED_PANDA_CONTAINER.getSchemaRegistryAddress(), 10);
+        try (InputStream in = AdherencePipelineIT.class.getResourceAsStream(avscResource)) {
+            client.register(topic + "-value", new AvroSchema(new Schema.Parser().parse(in)));
         }
     }
 
