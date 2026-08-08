@@ -35,5 +35,5 @@ jobs:
         run: mvn -B sonar:sonar
 
       - name: Docker build (no push)
-        if: hashFiles('Dockerfile') != ''    # activates when Phase 2 adds it
+        if: github.event_name == 'pull_request'
         run: docker build -t rx-vigilance:ci .
