@@ -80,9 +80,12 @@ locals {
   # TopicNameStrategy: subject = <topic>-value. Mirror of Phase 0 local
   # bootstrap; .avsc files in src/main/resources are the source of truth.
   schemas = {
-    "rx-fill-events-value"  = "rx-fill-event.avsc"
-    "gap-risk-alerts-value" = "gap-risk-alert.avsc"
-    "lapsed-alerts-value"   = "lapsed-alert.avsc"
+    "rx-fill-events-value"      = "rx-fill-event.avsc"
+    "ndc-drug-class-ref-value"  = "drug-class-ref.avsc"
+    "alert-lead-time-ref-value" = "alert-lead-time-ref.avsc"
+    "gap-risk-alerts-value"     = "gap-risk-alert.avsc"
+    "lapsed-alerts-value"       = "lapsed-alert.avsc"
+    "pdc-snapshots-value"       = "pdc-snapshot.avsc"
   }
 }
 

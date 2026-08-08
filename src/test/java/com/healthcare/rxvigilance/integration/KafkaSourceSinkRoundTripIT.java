@@ -10,6 +10,9 @@ import com.healthcare.rxvigilance.pipeline.source.AlertLeadTimeKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.DrugClassRefKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.RxFillEventSource;
 import com.healthcare.rxvigilance.serialization.deadletter.DeadLetterRecord;
+import io.confluent.kafka.schemaregistry.avro.AvroSchema;
+import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import org.apache.avro.Conversions;
@@ -159,6 +162,7 @@ class KafkaSourceSinkRoundTripIT {
     @Test
     void gapRiskAlertSinkRoundTrip() throws Exception {
         String topic = "gap-risk-alerts-" + UUID.randomUUID();
+        registerSubject(topic, "/gap-risk-alert.avsc");
         GapRiskAlert alert = new GapRiskAlert(
                 "alert-1", "member-1", "CHRONIC_CARDIAC",
                 LocalDate.of(2026, Month.FEBRUARY, 1), 7, System.currentTimeMillis());
@@ -190,6 +194,7 @@ class KafkaSourceSinkRoundTripIT {
     @Test
     void lapsedAlertSinkRoundTrip() throws Exception {
         String topic = "lapsed-alerts-" + UUID.randomUUID();
+        registerSubject(topic, "/lapsed-alert.avsc");
         LapsedAlert alert = new LapsedAlert(
                 "alert-2", "member-2", "CHRONIC_CARDIAC",
                 LocalDate.of(2026, Month.FEBRUARY, 10), System.currentTimeMillis());
@@ -220,6 +225,7 @@ class KafkaSourceSinkRoundTripIT {
     @Test
     void pdcSnapshotSinkRoundTrip() throws Exception {
         String topic = "pdc-snapshots-" + UUID.randomUUID();
+        registerSubject(topic, "/pdc-snapshot.avsc");
         PdcSnapshot snapshot = new PdcSnapshot(
                 "member-3", "CHRONIC_CARDIAC", 45,
                 LocalDate.of(2026, Month.MARCH, 1), System.currentTimeMillis());
@@ -391,5 +397,21 @@ class KafkaSourceSinkRoundTripIT {
         assertThat(consumerRecord.value()).isEqualTo(rawBytes);
         assertThat(consumerRecord.headers().lastHeader("error-message").value())
                 .isEqualTo(errorMessage.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * With AUTO_REGISTER_SCHEMAS off (#109), the job looks a schema up rather than creating it.
+     * These tests use randomised topic names, so no external tool can pre-register the subject —
+     * the test must do it, exactly as Terraform does for the real topics.
+     *
+     * Deliberately duplicated from AdherencePipelineIT: each test class owns a separate
+     * RedpandaContainer, and the helper must resolve the registry address of *its own* container.
+     */
+    private static void registerSubject(String topic, String avscResource) throws Exception {
+        SchemaRegistryClient client = new CachedSchemaRegistryClient(
+                RED_PANDA_CONTAINER.getSchemaRegistryAddress(), 10);
+        try (InputStream in = KafkaSourceSinkRoundTripIT.class.getResourceAsStream(avscResource)) {
+            client.register(topic + "-value", new AvroSchema(new Schema.Parser().parse(in)));
+        }
     }
 }

@@ -11,6 +11,7 @@ import org.apache.flink.util.Collector;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 import java.io.IOException;
+import java.util.Map;
 
 public final class TypedAvroDeserialisationSchema<T>
         implements KafkaRecordDeserializationSchema<KafkaSourceResult<T>> {
@@ -19,18 +20,21 @@ public final class TypedAvroDeserialisationSchema<T>
     private final AvroRecordDecoder<T> mapper;
     private final TypeInformation<KafkaSourceResult<T>> producedType;
     private transient AvroKeyValueDeSerializer<T> deserializer;
+    private final Map<String,String> registryConfig;
 
     public TypedAvroDeserialisationSchema(String schemaRegistryUrl,
                                           AvroRecordDecoder<T> mapper,
+                                          Map<String,String> registryConfig,
                                           TypeInformation<KafkaSourceResult<T>> producedType) {
         this.schemaRegistryUrl = schemaRegistryUrl;
         this.mapper = mapper;
         this.producedType = producedType;
+        this.registryConfig = registryConfig;
     }
 
     @Override
     public void open(DeserializationSchema.InitializationContext context) throws Exception {
-        SchemaRegistryClient client = new CachedSchemaRegistryClient(schemaRegistryUrl, SCHEMA_CACHE_CAPACITY);
+        SchemaRegistryClient client = new CachedSchemaRegistryClient(schemaRegistryUrl, SCHEMA_CACHE_CAPACITY,registryConfig);
         this.deserializer = new AvroKeyValueDeSerializer<>(client, mapper);
     }
 

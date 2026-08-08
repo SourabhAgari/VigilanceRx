@@ -102,7 +102,7 @@ public final class KafkaTypedSourceBuilder<T> {
                 .setGroupId(params.get("kafka.consumer.group.id", "rx-vigilance-flink"))
                 .setStartingOffsets(KafkaSourceUtil.startingOffsetsInitializer(params))
                 .setDeserializer(new TypedAvroDeserialisationSchema<>(
-                        kafkaConfig.schemaRegistryUrl(), mapper, producedType))
+                        kafkaConfig.schemaRegistryUrl(), mapper, kafkaConfig.registryConfig(),producedType))
                 .setProperties(KafkaSourceUtil.securityProperties(kafkaConfig))
                 .build();
 

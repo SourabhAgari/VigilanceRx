@@ -63,7 +63,7 @@ public class KafkaTypedSinkBuilder<T> {
         KafkaRecordSerializationSchema<T> recordSerializer = KafkaRecordSerializationSchema.<T>builder()
                 .setTopic(topic)
                 .setValueSerializationSchema(
-                        new TypedAvroSerializationSchema<>(kafkaConfig.schemaRegistryUrl(), valueSerializer, topic))
+                        new TypedAvroSerializationSchema<>(kafkaConfig.schemaRegistryUrl(), kafkaConfig.registryConfig(), valueSerializer, topic))
                 .build();
 
         Properties producerProperties = KafkaSourceUtil.securityProperties(kafkaConfig);

@@ -5,6 +5,8 @@ import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 
+import java.util.Map;
+
 public class TypedAvroSerializationSchema <T> implements SerializationSchema<T> {
 
     private static final int SCHEMA_CACHE_CAPACITY = 1000;
@@ -12,16 +14,20 @@ public class TypedAvroSerializationSchema <T> implements SerializationSchema<T> 
     private final AvroRecordEncoder<T> serializer;
     private final String topic;
     private transient AvroKeyValueSerializer<T> avroRecordSerializer;
+    private final Map<String, String> registryConfig;
 
-    public TypedAvroSerializationSchema(String schemaRegistryUrl, AvroRecordEncoder<T> serializer, String topic) {
+    public TypedAvroSerializationSchema(String schemaRegistryUrl,
+                                        Map<String,String> registryConfig,
+                                        AvroRecordEncoder<T> serializer, String topic) {
         this.schemaRegistryUrl = schemaRegistryUrl;
+        this.registryConfig = registryConfig;
         this.serializer = serializer;
         this.topic = topic;
     }
 
     @Override
     public void open(InitializationContext context) throws Exception {
-        SchemaRegistryClient client = new CachedSchemaRegistryClient(schemaRegistryUrl, SCHEMA_CACHE_CAPACITY);
+        SchemaRegistryClient client = new CachedSchemaRegistryClient(schemaRegistryUrl, SCHEMA_CACHE_CAPACITY, registryConfig);
         this.avroRecordSerializer = new AvroKeyValueSerializer<>(client, serializer, topic,schemaRegistryUrl);
     }
 
