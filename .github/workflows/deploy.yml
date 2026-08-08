@@ -1,8 +1,8 @@
 name: Deploy
 
-# Manual only for now.
-# The push trigger arrives in step 3, together with the
-# paths-ignore that stops the bot commit from retriggering this workflow.
+# Runs on every push to main, and manually via workflow_dispatch.
+# The paths-ignore below is what stops the deploy job's own commit from
+# retriggering this workflow.
 
 on:
   workflow_dispatch:
@@ -16,12 +16,10 @@ on:
 
 
 env:
-  # Hardcoded, and lowercase, on purpose.
-  # GHCR rejects uppercase repository names and github.repository_owner is
-  # "SourabhAgari". This string must match images[].name in
-  # k8s/flink/kustomization.yaml exactly, or the
-  # `kustomize edit set image` in step 3 silently matches nothing and the
-  # deploy quietly does nothing at all.
+  # Hardcoded, and lowercase, on purpose. GHCR rejects uppercase repository
+  # names and github.repository_owner is "SourabhAgari". This string must match
+  # images[].name in k8s/flink/kustomization.yaml exactly, or the yq select in
+  # the deploy job matches nothing and the deploy silently does nothing at all.
   IMAGE: ghcr.io/sourabhagari/rx-vigilance
 
 jobs:
