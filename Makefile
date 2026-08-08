@@ -40,8 +40,9 @@ infra-up: check-env
 	terraform -chdir=$(TF_RUNTIME) apply -auto-approve
 	$$(terraform -chdir=$(TF_RUNTIME) output -raw kubeconfig_command)
 	kubectl apply -f k8s/namespace.yaml
-	kubectl apply -f k8s/flink/flink-serviceaccount.yaml
-	kubectl apply -f k8s/flink/flink-rbac.yaml
+	# flink-serviceaccount.yaml and flink-rbac.yaml are deliberately NOT applied
+    # here: k8s/flink/ is owned by Argo CD from #114 (D54). Two things with
+    # authority over the same resources is what GitOps exists to remove.
 	kubectl create secret generic kafka-credentials \
 		--namespace rx-vigilance \
         --from-literal=sasl-username=rx-vigilance-flink \
@@ -63,8 +64,11 @@ infra-verify:
 	kubectl wait --for=condition=Ready pod --all -n cert-manager --timeout=300s
 	kubectl wait --for=condition=Ready pod --all -n flink-system --timeout=300s
 	kubectl wait --for=condition=Ready pod --all -n monitoring --timeout=600s
-	@kubectl get sa flink -n rx-vigilance \
-		-o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}'; echo
+	kubectl wait --for=condition=Ready pod --all -n argocd --timeout=300s
+	 @kubectl get sa flink -n rx-vigilance \
+                    -o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}' 2>/dev/null \
+                    && echo \
+                    || echo "flink SA not present — created by Argo CD from #114 (D54)"
 	@kubectl describe secret kafka-credentials -n rx-vigilance | grep sasl-
 	@echo "✔ runtime stack healthy"
 
