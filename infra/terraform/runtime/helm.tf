@@ -12,6 +12,26 @@ resource "helm_release" "cert_manager" {
       value = "true"
     }
   ]
+
+  # Chart ships no requests: all three pods land as BestEffort, first evicted
+  # under node pressure. Actual usage is negligible; this is about eviction
+  # order, not capacity (#115, D55).
+  values = [<<-EOT
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits:   { memory: 128Mi }
+
+  webhook:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits:   { memory: 128Mi }
+
+  cainjector:
+    resources:
+      requests: { cpu: 20m, memory: 128Mi }
+      limits:   { memory: 256Mi }
+EOT
+  ]
 }
 
 resource "helm_release" "flink_operator" {
@@ -25,6 +45,21 @@ resource "helm_release" "flink_operator" {
   # No attribute ties these releases together, but the operator's admission
   # webhook needs cert-manager ready to issue its TLS cert (§10 chain).
   depends_on = [helm_release.cert_manager]
+  # The operator is what keeps the job running and handles upgrades. It was
+  # BestEffort, so it was first in line to be evicted (#115). Measured 385Mi -
+  # it is a JVM, so memory dominates.
+  values = [<<-EOT
+  operatorPod:
+    resources:
+      requests: { cpu: 100m, memory: 512Mi }
+      limits:   { memory: 1Gi }
+
+  webhook:
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { memory: 256Mi }
+EOT
+  ]
 }
 
 resource "helm_release" "kube_prometheus_stack" {
@@ -37,6 +72,44 @@ resource "helm_release" "kube_prometheus_stack" {
 
   # No depends_on: this chart self-manages its webhook certs and shares no
   # real dependency with cert-manager or the Flink operator.
+  # Six BestEffort pods, including the two that would tell us something is
+  # wrong. Values below are measured usage (#115) with headroom. grafana,
+  # kube-state-metrics and prometheus-node-exporter are subcharts - their keys
+  # are not in this chart's own values file but pass through normally.
+  values = [<<-EOT
+  prometheusOperator:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits:   { memory: 128Mi }
+
+  prometheus:
+    prometheusSpec:
+      resources:
+        requests: { cpu: 100m, memory: 512Mi }
+        limits:   { memory: 1Gi }
+
+  alertmanager:
+    alertmanagerSpec:
+      resources:
+        requests: { cpu: 20m, memory: 64Mi }
+        limits:   { memory: 128Mi }
+
+  grafana:
+    resources:
+      requests: { cpu: 50m, memory: 384Mi }
+      limits:   { memory: 512Mi }
+
+  kube-state-metrics:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits:   { memory: 128Mi }
+
+  prometheus-node-exporter:
+    resources:
+      requests: { cpu: 20m, memory: 32Mi }
+      limits:   { memory: 64Mi }
+EOT
+  ]
 }
 
 resource "helm_release" "argocd" {
