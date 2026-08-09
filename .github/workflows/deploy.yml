@@ -55,9 +55,20 @@ jobs:
       runs-on: ubuntu-latest
       permissions:
         contents: write
-        pull-requests: write
+
       steps:
-        - uses: actions/checkout@v4
+        - name: Create GitHub App token
+          id: app-token
+          uses: actions/create-github-app-token@v2
+          with:
+            app-id: ${{ secrets.APP_ID }}
+            private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+        - name: Checkout
+          uses: actions/checkout@v4
+          with:
+            token: ${{ steps.app-token.outputs.token }}
+            fetch-depth: 0
 
         - name: Point kustomization at the new image
           env:
@@ -66,31 +77,20 @@ jobs:
             yq -i '(.images[] | select(.name == strenv(IMAGE)) | .newTag) = strenv(TAG)' \
               k8s/flink/kustomization.yaml
 
-        # main requires a reviewed PR and personal repos cannot grant the
-        # github-actions app a bypass, so the deploy commit arrives as a PR.
-        # Merging it is the approval gate — which is why the `production`
-        # environment is no longer used here.
-        - name: Open deploy PR
+        - name: Commit and push to main
           env:
             TAG: ${{ github.sha }}
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           run: |
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config user.name "rx-vigilance-bot[bot]"
+            git config user.email "rx-vigilance-bot[bot]@users.noreply.github.com"
 
             git add k8s/flink/kustomization.yaml
 
-            git diff --staged --quiet && {
+            if git diff --staged --quiet; then
               echo "tag unchanged, nothing to deploy"
-              exit 0
-            }
+            exit 0
+            fi
 
-            git checkout -b "deploy/$TAG"
-            git commit -m "deploy: rx-vigilance:$TAG"
-            git push origin "deploy/$TAG"
+        git commit -m "deploy: rx-vigilance:$TAG"
 
-            gh pr create \
-              --base main \
-              --head "deploy/$TAG" \
-              --title "deploy: rx-vigilance:$TAG" \
-              --body "Automated. Sets the image tag in k8s/flink/kustomization.yaml. Merging deploys via Argo CD."
+        git push origin HEAD:main
