@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  name: rx-vigilance
+  # Applications live in Argo CD's namespace, not the workload's — this is a
+  # record in Argo CD's database, not something that runs beside the job.
+  # An Application in the wrong namespace is silently ignored, with no error.
+  namespace: argocd
+
+  # No `resources-finalizer.argocd.argoproj.io` finalizer, on purpose. With it,
+  # deleting this Application cascades into deleting the FlinkDeployment — a
+  # running stateful job destroyed by removing a pointer to it. Teardown here
+  # is `terraform destroy`, not `kubectl delete application`.
+
+spec:
+  # The AppProject from #30 — not `default`, which permits every repo,
+  # namespace and kind. This line is what makes "Argo CD can only touch the
+  # Flink job" enforced rather than assumed (D54).
+  project: rx-vigilance
+
+  source:
+    # Must match the AppProject's sourceRepos entry character for character —
+    # a trailing `.git` on one side and not the other is a rejected sync.
+    repoURL: https://github.com/SourabhAgari/VigilanceRx
+
+    # Not a pinned SHA: #103's contract is that merging the deploy PR is the
+    # deploy. A pinned revision would need a second edit to change anything.
+    targetRevision: main
+
+    # Narrow on purpose. Argo CD tracks the three resources here and nothing
+    # else — that scope is what makes prune safe. kustomization.yaml is
+    # auto-detected; no `kustomize:` block needed.
+    path: k8s/flink
+
+  destination:
+    server: https://kubernetes.default.svc
+
+    # None of the manifests in k8s/flink/ declare a namespace of their own;
+    # this field is what places them.
+    namespace: rx-vigilance
+
+  syncPolicy:
+    # Both default to false. Without this block Argo CD is a manual sync
+    # button, not GitOps (D54).
+    automated:
+      prune: true
+      # delete what git has stopped declaring
+
+      selfHeal: true
+      # revert drift applied straight to the cluster
+
+    # No syncOptions — specifically no CreateNamespace=true. The AppProject
+    # sets clusterResourceWhitelist: [], so Argo CD cannot create a Namespace;
+    # that option would produce a sync failure, not a namespace. #104 owns it.

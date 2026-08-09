@@ -55,6 +55,8 @@ infra-up: check-env
 		--docker-password="$$GHCR_READ_TOKEN" \
 		--docker-email=agarisra@gmail.com \
 		--dry-run=client -o yaml | kubectl apply -f -
+	kubectl apply -f k8s/argocd/appproject.yaml
+	kubectl apply -f k8s/argocd/application.yaml
 	$(MAKE) infra-verify
 
 infra-down:
