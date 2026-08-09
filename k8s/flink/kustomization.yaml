@@ -4,6 +4,8 @@ resources:
   - flink-serviceaccount.yaml
   - flink-rbac.yaml
   - flink-deployment.yaml
+  - secret-store.yaml
+  - external-secrets.yaml
 configurations:
   - imagetransformer.yaml
 images:
