@@ -165,3 +165,42 @@ resource "helm_release" "argocd" {
   ]
 }
 
+resource "helm_release" "external_secrets" {
+  name             = "external-secrets"
+  repository       = "https://charts.external-secrets.io"
+  chart            = "external-secrets"
+  version          = "2.9.0" # pinned: same apply = same software
+  namespace        = "external-secrets"
+  create_namespace = true
+
+  # No depends_on cert-manager: this chart runs its own cert-controller for the
+  # webhook, unlike the Flink operator (§10 chain).
+  values = [<<-EOT
+    serviceAccount:
+      # Pinned, not left to the chart's generated name. The Workload Identity
+      # binding in platform/secrets.tf names the
+      # [external-secrets/external-secrets] literally, and a generated name
+      # that drifts would break impersonation with a confusing 403.
+      name: external-secrets
+      annotations:
+        iam.gke.io/gcp-service-account: rx-vigilance-eso@vigilancerx-502702.iam.gserviceaccount.com
+
+    # Requests from the start, per #115/D61 - this chart ships none either.
+    # CPU requests without CPU limits; memory with both.
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { memory: 256Mi }
+
+    webhook:
+      resources:
+        requests: { cpu: 20m, memory: 64Mi }
+        limits:   { memory: 128Mi }
+
+    certController:
+      resources:
+        requests: { cpu: 20m, memory: 64Mi }
+        limits:   { memory: 128Mi }
+  EOT
+  ]
+}
+
