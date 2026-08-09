@@ -32,3 +32,8 @@ output "kafka_sasl_username" {
   description = "SASL username for the Flink job — password stays in env/K8s Secret only, never in outputs or state"
   value       = redpanda_user.flink.name
 }
+
+output "external_secrets_gsa_email" {
+  description = "Google service account the ESO pod impersonates via Workload Identity"
+  value       = google_service_account.external_secrets.email
+}
