@@ -59,4 +59,66 @@ class KafkaSourceUtilTest {
                 .contains("password=\"pass\"");
     }
 
+    @Test
+    void producerPropertiesSetsTransactionTimeoutDefault() {
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                "localhost:9092",
+                "http://localhost:8081",
+                null,
+                null,
+                null,
+                null);
+
+        Properties properties = KafkaSourceUtil.producerProperties(
+                kafkaConfig,
+                ParameterTool.fromMap(Map.of()));
+
+        assertThat(properties.getProperty("transaction.timeout.ms"))
+                .isEqualTo("60000");
+    }
+
+    @Test
+    void producerPropertiesTransactionTimeoutOverridable() {
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                "localhost:9092",
+                "http://localhost:8081",
+                null,
+                null,
+                null,
+                null);
+
+        ParameterTool params = ParameterTool.fromMap(
+                Map.of("kafka.transaction.timeout.ms", "120000"));
+
+        Properties properties = KafkaSourceUtil.producerProperties(
+                kafkaConfig,
+                params);
+
+        assertThat(properties.getProperty("transaction.timeout.ms"))
+                .isEqualTo("120000");
+    }
+
+    @Test
+    void producerPropertiesKeepsSaslCredentials() {
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                "broker:9092",
+                "http://registry",
+                "user",
+                "pass",
+                "SASL_SSL",
+                "SCRAM-SHA-256");
+
+        Properties properties = KafkaSourceUtil.producerProperties(
+                kafkaConfig,
+                ParameterTool.fromMap(Map.of()));
+
+        assertThat(properties.getProperty("security.protocol"))
+                .isEqualTo("SASL_SSL");
+        assertThat(properties.getProperty("sasl.mechanism"))
+                .isEqualTo("SCRAM-SHA-256");
+        assertThat(properties.getProperty("transaction.timeout.ms"))
+                .isEqualTo("60000");
+    }
+
+
 }

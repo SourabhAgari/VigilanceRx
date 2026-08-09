@@ -66,11 +66,7 @@ public class KafkaTypedSinkBuilder<T> {
                         new TypedAvroSerializationSchema<>(kafkaConfig.schemaRegistryUrl(), kafkaConfig.registryConfig(), valueSerializer, topic))
                 .build();
 
-        Properties producerProperties = KafkaSourceUtil.securityProperties(kafkaConfig);
-
-        // note: this needs to be set dynamically based on checkpoint behavior
-        producerProperties.setProperty("transaction.timeout.ms",
-                params.get("kafka.transaction.timeout.ms", "60000"));
+        Properties producerProperties = KafkaSourceUtil.producerProperties(kafkaConfig, params);
 
         return KafkaSink.<T>builder()
                 .setBootstrapServers(kafkaConfig.brokers())

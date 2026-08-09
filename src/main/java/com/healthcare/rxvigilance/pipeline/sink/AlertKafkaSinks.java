@@ -76,7 +76,7 @@ public final class AlertKafkaSinks {
 
         KafkaRecordSerializationSchema<DeadLetterRecord> recordSerializer = deadLetterRecordSerializer(topic);
 
-        Properties producerProperties = KafkaSourceUtil.securityProperties(kafkaConfig);
+        Properties producerProperties = KafkaSourceUtil.producerProperties(kafkaConfig, params);
 
         return KafkaSink.<DeadLetterRecord>builder()
                 .setBootstrapServers(kafkaConfig.brokers())

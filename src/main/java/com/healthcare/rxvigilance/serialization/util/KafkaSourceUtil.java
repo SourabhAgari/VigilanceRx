@@ -31,4 +31,20 @@ public class KafkaSourceUtil {
         }
         return properties;
     }
+
+    public static Properties producerProperties(
+            KafkaConnectionConfig kafkaConnectionConfig,
+            ParameterTool parameters) {
+
+        Properties properties = securityProperties(kafkaConnectionConfig);
+
+        // Kafka's default is 1 hour, above Redpanda's transaction.max.timeout.ms
+        // (15 min), so an EXACTLY_ONCE sink that omits this is rejected at
+        // InitProducerId. Every sink goes through here so none can omit it.
+        properties.setProperty(
+                "transaction.timeout.ms",
+                parameters.get("kafka.transaction.timeout.ms", "60000"));
+
+        return properties;
+    }
 }

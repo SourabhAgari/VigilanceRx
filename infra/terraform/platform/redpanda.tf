@@ -60,6 +60,15 @@ locals {
     "write-pdc-snapshots"       = { type = "TOPIC", name = "pdc-snapshots", op = "WRITE", pattern = "LITERAL" }
     "write-dead-letter"         = { type = "TOPIC", name = "dead-letter", op = "WRITE", pattern = "LITERAL" }
     "read-consumer-group"       = { type = "GROUP", name = "rx-vigilance", op = "READ", pattern = "PREFIXED" }
+    # EXACTLY_ONCE sinks use Kafka transactions, authorized on a separate
+    # resource type from the topic. Prefix matches
+    # setTransactionalIdPrefix("rx-vigilance-" + topic) in AlertKafkaSinks.
+    "write-transactional-id" = {
+      type    = "TRANSACTIONAL_ID"
+      name    = "rx-vigilance-"
+      op      = "WRITE"
+      pattern = "PREFIXED"
+    }
   }
 }
 
