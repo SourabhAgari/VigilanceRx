@@ -11,7 +11,18 @@ on:
     # The deploy job commits back to main. Without this, that commit would
     # retrigger this workflow, which would commit again — a loop.
     paths-ignore:
+      # The deploy job commits back to main. Without this, that commit would
+      # retrigger this workflow, which would commit again - a loop.
       - 'k8s/**'
+
+      # Documentation cannot change the image, and a rebuild here is not free:
+      # it restarts a healthy job for about 64 seconds (#133's measurement) and
+      # pushes another 600 MB image tagged with a commit that changed no code.
+      # Happened four times on 2026-08-09/10 for ledger edits alone (#135).
+      #
+      # A push is skipped only when EVERY changed file matches this list, so a
+      # commit touching both docs and code still deploys.
+      - '**.md'
 
 
 
