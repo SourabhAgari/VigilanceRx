@@ -38,7 +38,7 @@ requires restoring it (one `terraform apply`).
 | 8 | onTimer, LapsedAlert & REVERSAL path | local | ✅ done 2026-08-02 |
 | 9 | Metrics, job wiring & integration test | local | ✅ done 2026-08-03 (IT hardened + topology test 2026-08-05 — D41–D45; metric counters tested 2026-08-06 — D46) |
 | 10 | Containerization & CI/CD deploy path | cloud | ✅ done 2026-08-10 — all 14 child issues closed, both exit criteria met with evidence (D49–D65). **GKE cluster is still up and billing — destroy unless starting Phase 11** |
-| 11 | Observability | cloud | ☐ not started |
+| 11 | Logging & Observability | cloud | ◐ in progress — started 2026-08-10. Epic #145 + child issues #146–#153 created; scope expanded beyond spec minimum (D66). No task complete yet. Tasks #146–#150 are local; the cluster is only needed from #151 |
 | 12 | End-to-end cloud validation & docs | cloud | ☐ not started |
 
 Status values: ☐ not started · ◐ in progress · ✅ done · ⏸ blocked (note why)
@@ -1132,20 +1132,77 @@ enough to run anything.
 
 ---
 
-## Phase 11 — Observability **[CLOUD]**
+## Phase 11 — Logging & Observability **[CLOUD]**
 
-- [ ] Flink Prometheus reporter enabled in FlinkDeployment;
-      `observability/podmonitor.yaml` scraping JM + TMs
-- [ ] `grafana-dashboard-adherence.json` — spec minimum panel set:
-      watermark lag per source (the critical panel), checkpoint
-      duration/size, RocksDB memory/state size, records in/out + filter
-      drop rate, alert emission counts
-- [ ] `alertmanager-rules.yaml`: checkpoint failure; watermark stall
-- [ ] Induce a watermark stall (pause producer) and confirm the panel and
-      alert both catch it
+Epic #145; child issues #146–#153. Scope expanded beyond `spec.md`'s four
+bullets at phase start — see **D66**. The spec minimum is #146, one dashboard
+of #151, and two rules of #152; everything else is the expansion.
 
-**Exit criteria**: dashboard renders live data; the induced-stall drill
-fires the Alertmanager rule
+**Goal**: make the job supportable by someone who has never read the code.
+Every item is judged against one path — alert → component → dashboard → pod →
+log → correlation ID → Kafka message → processing step → error → root cause.
+
+**Starting position (measured 2026-08-10)**: kube-prometheus-stack has been
+running since Phase 1, but nothing scrapes Flink — no reporter, no PodMonitor,
+so `AdherenceMetricsReporter`'s four counters go nowhere. `observability/`
+does not exist. Three classes log at all (`AdherenceJob`, `SmokeJob`,
+`IntervalMerger`); `AdherenceProcessFunction`, all three sources, all four
+sinks and `DeadLetterSplitFunction` log nothing. Operators have `.uid()` but
+never `.name()`, and Flink metric labels use the name. `DeadLetterRecord` is
+`(rawBytes, errorMessage)` — a poison message cannot be traced back to Kafka.
+
+**Local — verifiable without the cluster**
+- [ ] #146 Flink Prometheus reporter in FlinkDeployment +
+      `observability/podmonitor.yaml` scraping JM + TMs. The unblocker:
+      nothing else in the phase works until metrics leave the job
+- [ ] #147 JSON structured logging (`log4j-layout-template-json`) with the
+      standard field set — `service`, `jobName`, `imageTag`, `component`,
+      `operatorUid`, `subtask` in MDC; `claimId` and Kafka coordinates passed
+      per line. Applied via `spec.logConfiguration` in the FlinkDeployment,
+      not the in-JAR `log4j2.properties` (which the cluster never reads).
+      Drops the `/tmp/adherence-job.log` file appender
+- [ ] #148 `.name()` on every operator (savepoint-safe; `.uid()` is what
+      drives state) + real logging in operators, sources and sinks
+- [ ] #149 Kafka topic/partition/offset carried through `KafkaSourceResult`
+      and `DeadLetterRecord` to dead-letter **headers** — additive, no Avro
+      schema, no registry one-way door (D67)
+- [ ] #150 New application metrics (`deadLetterRecords`,
+      `duplicateClaimIdDropped`, `reversalWithoutOriginal`,
+      `timersRegistered`/`timersFired`, `activeKeys`,
+      `broadcastEntriesLoaded`, `pdcSnapshotsEmitted`) + three RocksDB
+      metrics. `IntervalMerger` keeps zero Flink imports, so its two counters
+      are incremented caller-side
+
+**Cloud — billing starts here**
+- [ ] #151 Four Grafana dashboards (support, developer, platform, business),
+      provisioned as ConfigMaps so they survive a Grafana pod restart
+- [ ] #152 `alertmanager-rules.yaml`: seven critical + eight warning rules,
+      with `for:` durations, inhibition (JobDown suppresses its symptoms),
+      spot preemption at warning only, and full annotations
+      (summary/description/impact/dashboard/logQuery/runbook/firstStep).
+      Includes the induced watermark-stall drill
+- [ ] #153 `observability/RUNBOOK.md` covering all 40 failure scenarios +
+      PHI log-hygiene enforcement (`LogFields`, `LogSafe`, hashed `memberRef`,
+      a test asserting no PHI at INFO or above)
+
+**Exit criteria**:
+1. Flink metrics scraped by Prometheus; all four existing counters visible
+2. All logs JSON in Cloud Logging with the full standard field set
+3. Every operator has both `.uid()` and `.name()`; metric labels readable
+4. A dead-letter message traceable to its exact source topic/partition/offset
+5. All four dashboards render live data and survive a Grafana pod restart
+6. All critical alert rules exist with complete annotations and pass
+   `promtool test rules` in CI
+7. Induced-stall drill passes — panel shows it, `WatermarkStalled` fires
+8. `RUNBOOK.md` covers all 40 failure scenarios
+9. Log-hygiene test green: no PHI at INFO or above
+10. Every failure scenario maps to ≥1 metric, ≥1 panel, ≥1 runbook section
+11. `mvn clean verify` green; Sonar gate green
+
+**Deliberately out of scope**: #94 (broadcast streams gate the operator
+watermark) — this phase makes it *visible*; the fix is pipeline logic and
+stays a separate issue. Also out: distributed tracing, Loki, GCP Managed
+Prometheus, automated remediation, SLO/error-budget dashboards.
 
 ---
 
@@ -1239,3 +1296,5 @@ README; repo reproducible from clean clone + documented secrets
 | D63 | 2026-08-10 | **`checkpoint.dir` becomes optional rather than required**, so each environment has exactly one place that defines the checkpoint directory: the FlinkDeployment manifest on GKE, `application-local.properties` locally | **Why the duplication existed and why it could not simply be deleted.** The operator's validating webhook demands `state.checkpoints.dir` in `flinkConfiguration` before the JVM exists — that is what rejected the very first Argo CD sync in #114 — while `CheckpointConfig` demanded `checkpoint.dir` as a job parameter. Two files, same `gs://` path, nothing enforcing agreement. Exactly D47's hazard, which cost a debugging session when a broker URL diverged. **The observation that made the fix small.** When the operator writes `state.checkpoints.dir` into the cluster configuration, **Flink already uses it**; the job calling `setCheckpointStorage` on top was setting the value the cluster had anyway. So the job never needed to be told on GKE — only locally, where there is no cluster configuration. The change is therefore three small edits, not a redesign: `null` allowed in `CheckpointConfig` (blank still rejected, because blank is a typo and absent is a decision), a conditional in `AdherenceJob`, and the line deleted from `application-gke.properties`. **The risk this introduced, and how it was closed.** If neither source sets a directory, Flink 1.18 silently falls back to `JobManagerCheckpointStorage`: checkpoints report as completed and are lost when the JobManager dies. A duplication that is visible is safer than a fallback that is not, so the fix is only acceptable with evidence of which path was taken. The job logs it at INFO — deliberately not WARN, since on GKE the "not set" branch is the normal and correct one, and a warning on every healthy start teaches people to ignore warnings. **The verification worth copying.** Three checks were planned: the job's own log line, checkpoints completing, and a new directory appearing in the bucket. The cluster supplied a fourth and better one unprompted — Flink's `Using job/cluster config to configure application-defined checkpoint storage: FileSystemCheckpointStorage`. `Completed checkpoint` would read identically under the memory fallback; that line names the storage implementation, so it distinguishes the two directly instead of by inference. Worth remembering as a pattern: prefer the log line that names the mechanism over the one that reports success. **Result on the cluster**: new job directory in `gs://…/rx-vigilance-ckpt/`, checkpoints 2401-2403 at 37031 bytes against 37016 before the upgrade — the savepoint restore carried the M001 coverage across, so this also re-exercised the D51 upgrade path with real state |
 | D64 | 2026-08-10 | **`transaction.timeout.ms` raised from 60000 to 900000**, the broker's maximum. The measurement that settles it: a real restart took **64 seconds**, so the old value was below actual restart time rather than merely close to it | **What the setting does.** The EXACTLY_ONCE sinks hold a Kafka transaction open from one checkpoint to the next and commit when the checkpoint completes. `transaction.timeout.ms` is how long the broker will keep an open transaction before discarding it. If the job is down longer than that, the transaction it had open is gone and the alerts in it are lost — silently, from the job's point of view, which is the worst kind of loss in an adherence pipeline. **The value was never chosen.** 60000 came from `KafkaTypedSinkBuilder`, and D59 kept it deliberately: with the job crash-looping on the dead-letter sink, matching the number the other three sinks had already proven against this broker was safer than guessing higher. That was right at the time and left this question open. **The broker's limit had to be measured, not assumed.** `rpk cluster config get` is unsupported on serverless, so a `probe` mode was added to `CloudEventPublisher`: build a transactional producer at a given timeout and call `initTransactions()`. 900000 accepted, and the 1h Flink default was already known to be rejected — so the cap is 15 minutes, matching Redpanda's documented default. The probe is kept in the repo, because without it the number in the code comment is an assertion rather than a finding. **Why the maximum rather than a rounder number.** Standard guidance for exactly-once Flink sinks is to set the timeout to at least the maximum tolerable downtime; Flink's own default is an hour, and production deployments usually raise the *broker's* `transaction.max.timeout.ms` to accommodate it. Serverless does not allow that. The honest description is that we asked for an hour and took the cap. An earlier draft of this decision argued for 600000 to leave "margin below the cap in case a future broker is lower" — that argument was withdrawn, because a broker that rejects the value fails loudly at `InitProducerId`, exactly as observed this morning. There is no silent risk to insure against, so 600000 would buy five minutes less protection for nothing. **The cost, stated plainly:** if the job dies and never returns, the abandoned transaction blocks read-committed consumers for up to 15 minutes. That only lands when the job is gone for good, while the benefit lands on every ordinary restart. **The measurement.** A savepoint upgrade on 2026-08-10 ran from container stop at 04:58:26 to `RUNNING` at 04:59:30 — 64 seconds, and the savepoint itself was taken before that window, so the real outage is longer. Image pull was 1.9s on a warm node and would be slower on a cold one. **Every deploy done today was therefore inside the failure window of the old setting**, and only the absence of in-flight alerts kept it from mattering. 900000 leaves roughly a fourteenfold margin. **Process note:** the code for this landed on `main` inside PR #140, whose title describes only #132's ledger, because the commits were made on the wrong branch. Nothing was lost and CI was green, so the history was left alone rather than rewritten after merge and deploy — but the PR title does not describe half of what it contains, and that is worth avoiding rather than repeating |
 | D65 | 2026-08-10 | **`deploy.yml` no longer rebuilds on documentation-only changes.** `'**.md'` added to `paths-ignore`, which previously covered `k8s/**` alone | **The cost was not theoretical and not small.** Any push to `main` that touched no `k8s/` file ran the whole deployment machine: build the image, push about 600 MB to GHCR under a new commit tag, write that tag back into `kustomization.yaml`, and let Argo CD sync it — which makes the operator take a savepoint, kill the job and start a new one. D64 measured that restart at **64 seconds**. So a typo fix in a Markdown file took a healthy job down for a minute. It happened five times across 2026-08-09/10 for ledger and README edits alone, including one that restarted the job while its own decision entry was being written. **Why `paths-ignore` is the right tool and is safe.** A push is skipped only when **every** changed file matches the list. A commit touching both a Markdown file and Java still deploys, so there is no way to lose a real deployment by including a docs edit alongside it. That property is what makes an ignore list preferable to a `[skip ci]` convention in commit messages, which is the other common approach and depends on every future message being written correctly — the same argument D54 used when it chose `paths-ignore` over `[skip ci]` for loop prevention. **Scope deliberately limited to documentation.** `infra/**` also cannot change the image, and arguably belongs here too, but Terraform changes are rarer and the reasoning is less obvious at a glance; left out rather than folded in silently. **Verified by the merge of this entry.** The commit that adds D65 touches `IMPLEMENTATION.md` and nothing else, so it is exactly the case the change exists to skip. The check is that merging it produces a CI run and **no Deploy run**. Testing the fix with the artifact that documents it is a small thing, but it beats reading the YAML and concluding it looks right — which is how `applicationSet.enabled` got past review in D55. **One ordering mistake worth recording**: the ledger PR intended as the test merged *before* the fix did, so it deployed exactly as before and was wasted as a test. Merge order matters when the change under test is a merge-time behaviour |
+| D66 | 2026-08-10 | **Phase 11 scope expanded beyond `spec.md`'s minimum**, and the phase renamed *Logging & Observability*. The spec asks for four things: Prometheus reporter + PodMonitor, one dashboard, two Alertmanager rules, one stall drill. The phase now also covers structured JSON logging with a standard field set, Kafka coordinates carried through to the dead-letter topic, seven new application metrics, four audience-specific dashboards, a full alert set with inhibition, a 40-scenario runbook, and enforced PHI log hygiene. `spec.md` stays read-only; the expansion lives in this ledger and in epic #145 | The spec's minimum makes the job *monitorable* — you can see that a number moved. It does not make the job *supportable*: nobody can go from an alert to a root cause without reading Java. Measuring the starting position made the gap concrete rather than theoretical. Three classes in the whole codebase log anything, and the core operator (`AdherenceProcessFunction`) is silent. Logs are plain-text, so Cloud Logging can only grep them, which kills every canned query the runbook depends on. `DeadLetterRecord` carries `(rawBytes, errorMessage)` and no Kafka coordinates, so a poison message cannot be traced back to the broker at all — the single biggest root-cause gap. Operators set `.uid()` but never `.name()`, and Flink's metric labels use the name, so every dashboard panel would show auto-generated strings. Two of these are cheap to fix now and expensive later: dead-letter coordinates travel as Kafka **headers**, which is additive with no schema-registry involvement (D67), and `.name()` is savepoint-safe because `.uid()` is what drives state. The cost argument also favours expansion: kube-prometheus-stack (Prometheus, Grafana, Alertmanager, kube-state-metrics, node-exporter) has been installed and billing since Phase 1 while scraping nothing from Flink, so most of the platform is already paid for and the remaining work is wiring, dashboards and a runbook rather than installing a stack. Deliberately excluded, with reasons, so the expansion does not become unbounded: no Loki (GKE already ships container stdout to Cloud Logging for free; Loki would cost memory on a two-node spot cluster for a capability we have), no distributed tracing (built for request/response call graphs across services — this is one streaming job, and `claimId` in structured logs answers the same questions; Flink 1.18 has no first-class OpenTelemetry support), no synthetic correlation ID (`claimId` is already unique and on every `RxFillEvent`; inventing one would mean an Avro change, a §11 one-way door, for no gain). Sequenced so #146–#150 are code and config verifiable locally and only #151–#153 need the cluster, which keeps GKE billing time down per §3 |
+| D67 | 2026-08-10 | **Kafka source coordinates (topic/partition/offset/timestamp) are carried on `KafkaSourceResult` and `DeadLetterRecord` and written as Kafka message headers**, not as Avro fields — and adding those fields to `DeadLetterRecord` is treated as savepoint-safe | **Why headers.** The dead-letter topic carries raw bytes with no schema at all — `AlertKafkaSinks.deadLetterRecordSerializer` writes `DeadLetterRecord::rawBytes` directly and already attaches one header (`error-message`) via `setHeaderProvider`. Kafka headers are additive metadata: nothing to register in the schema registry, nothing to evolve, no `FULL_TRANSITIVE` compatibility question, and consumers ignore headers they do not recognise. Modelling the coordinates as Avro fields instead would have created a new subject and a real one-way door (§11) for metadata that is not part of the payload. **Why the record change is safe.** `DeadLetterRecord` is Kryo-registered in the job graph, which is close enough to §4/§11's state-schema line to be worth stating rather than assuming. It is safe because the type never reaches persisted state: `upgradeMode: savepoint` (D49) stops the job cleanly before an upgrade, and aligned checkpointing holds no in-flight records — the record exists only between the deserializer and the sink within a single run. Recorded explicitly so a future reader does not have to re-derive it, and so that if unaligned checkpoints are ever enabled this entry is the thing that flags the assumption as broken. **What this buys.** It closes the biggest root-cause gap in the project: today a deserialization failure tells you *that* something failed and roughly *why*, but not *which message*, so nobody can inspect the real record on the broker, replay it, or tell the producing team where the bad data is. D29's incident is the cautionary case — a permanently misconfigured serializer produced an infinite restart loop with no error pointing at the cause |
