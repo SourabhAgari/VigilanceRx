@@ -37,7 +37,7 @@ requires restoring it (one `terraform apply`).
 | 7 | Adherence core — FILL path & timers | local | ✅ done 2026-08-01 |
 | 8 | onTimer, LapsedAlert & REVERSAL path | local | ✅ done 2026-08-02 |
 | 9 | Metrics, job wiring & integration test | local | ✅ done 2026-08-03 (IT hardened + topology test 2026-08-05 — D41–D45; metric counters tested 2026-08-06 — D46) |
-| 10 | Containerization & CI/CD deploy path | cloud | ◐ in progress — **both exit criteria met 2026-08-09** (#114, #130, #105 done; D54–D59). Remaining: #115, #118, both deliberately sequenced after #105. **GKE cluster rebuilt 2026-08-09 and billing — destroy when #115/#118 are not being worked** |
+| 10 | Containerization & CI/CD deploy path | cloud | ✅ done 2026-08-10 — all 14 child issues closed, both exit criteria met with evidence (D49–D65). **GKE cluster is still up and billing — destroy unless starting Phase 11** |
 | 11 | Observability | cloud | ☐ not started |
 | 12 | End-to-end cloud validation & docs | cloud | ☐ not started |
 
@@ -1114,8 +1114,21 @@ approval; job stable through one checkpoint cycle
   was the only human action.
 - ✅ 2026-08-09: checkpoints 50→81, 30s apart, ~1s duration, 0 pod restarts.
 
-Phase stays ◐ rather than ✅: #115 and #118 remain open, both deliberately
-sequenced after #105 rather than deferred out of the phase.
+**Phase closed ✅ 2026-08-10.** All 14 child issues closed: #30, #98, #99,
+#100, #101, #102 (dead work), #103, #104, #105, #109, #114, #115, #118, #130,
+#132, #133, #135. Epic #97 closed with both criteria evidenced above.
+
+Repeated since, so the exit criteria are not a one-off: five further merges
+reached the cluster the same way, the last being `cb0d8b0` for #133. The
+deploy path also survived being changed underneath itself — D57's PR flow
+became D58's GitHub App, and D54's Argo CD Application took over from
+`kubectl apply`, without a manual deployment in between.
+
+What this phase did **not** produce, deliberately: dashboards, alert rules,
+or any measurement of the job under sustained load. Those are Phases 11 and
+12. The only observability today is `kubectl logs` and the fact that
+checkpoints keep completing — which was enough to close #105 and is not
+enough to run anything.
 
 ---
 
