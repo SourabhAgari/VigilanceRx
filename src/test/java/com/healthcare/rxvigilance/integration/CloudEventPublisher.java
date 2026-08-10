@@ -20,10 +20,10 @@ public class CloudEventPublisher {
     /**
      * Publishes a small, known set of events to Redpanda Cloud so the deployed job
      * can be verified end to end (#105). Not a test - run from the IDE.
-     *
+     * <p>
      * Required environment variables:
-     *   KAFKA_BROKERS, SCHEMA_REGISTRY_URL,
-     *   KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD
+     * KAFKA_BROKERS, SCHEMA_REGISTRY_URL,
+     * KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD
      */
     private static final String NDC = "00093-7424-56";
 
@@ -32,6 +32,34 @@ public class CloudEventPublisher {
         Properties props = cloudProducerProperties();
 
         switch (mode) {
+            // #133: the broker's transaction.max.timeout.ms is not readable on a
+            // serverless cluster, so ask it. It rejects anything above the limit,
+            // which is how the 1h default failed in the first place.
+            case "probe" -> {
+                String timeoutMs = args.length > 1 ? args[1] : "900000";
+
+                Properties probeProps = cloudProducerProperties();
+                probeProps.put(
+                        ProducerConfig.TRANSACTIONAL_ID_CONFIG,
+                        "rx-vigilance-probe"
+                );
+                probeProps.put("transaction.timeout.ms", timeoutMs);
+
+                try (KafkaProducer<String, GenericRecord> producer =
+                             new KafkaProducer<>(probeProps)) {
+
+                    producer.initTransactions();
+
+                    System.out.println(
+                            "ACCEPTED transaction.timeout.ms=" + timeoutMs
+                    );
+                } catch (Exception e) {
+                    System.out.println(
+                            "REJECTED transaction.timeout.ms=" + timeoutMs
+                                    + " -> " + e.getMessage()
+                    );
+                }
+            }
             case "refs" -> {
                 // Compacted topics: publish once, and the job picks these up on
                 // every start. Run "fills" separately, after these have landed.

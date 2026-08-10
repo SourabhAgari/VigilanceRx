@@ -38,12 +38,21 @@ public class KafkaSourceUtil {
 
         Properties properties = securityProperties(kafkaConnectionConfig);
 
-        // Kafka's default is 1 hour, above Redpanda's transaction.max.timeout.ms
-        // (15 min), so an EXACTLY_ONCE sink that omits this is rejected at
-        // InitProducerId. Every sink goes through here so none can omit it.
+        // Exactly-once sinks hold a transaction open from one checkpoint to the
+        // next and commit on checkpoint completion. If the job is down longer
+        // than this, the broker discards the open transaction and the alerts in
+        // it are lost - so the value must exceed the worst restart, not the
+        // checkpoint interval.
+        //
+        // 900000 (15 min) is the broker's maximum, confirmed by probing this
+        // cluster (#133). Flink's own default is 1 hour and was rejected;
+        // production Flink deployments usually raise the broker's
+        // transaction.max.timeout.ms instead, which serverless does not allow.
+        // We asked for an hour and took the cap. Override per environment with
+        // kafka.transaction.timeout.ms.
         properties.setProperty(
                 "transaction.timeout.ms",
-                parameters.get("kafka.transaction.timeout.ms", "60000"));
+                parameters.get("kafka.transaction.timeout.ms", "900000"));
 
         return properties;
     }

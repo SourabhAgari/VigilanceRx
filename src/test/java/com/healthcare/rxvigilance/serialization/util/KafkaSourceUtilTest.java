@@ -74,7 +74,7 @@ class KafkaSourceUtilTest {
                 ParameterTool.fromMap(Map.of()));
 
         assertThat(properties.getProperty("transaction.timeout.ms"))
-                .isEqualTo("60000");
+                .isEqualTo("900000");
     }
 
     @Test
@@ -117,7 +117,7 @@ class KafkaSourceUtilTest {
         assertThat(properties.getProperty("sasl.mechanism"))
                 .isEqualTo("SCRAM-SHA-256");
         assertThat(properties.getProperty("transaction.timeout.ms"))
-                .isEqualTo("60000");
+                .isEqualTo("900000");
     }
 
 
