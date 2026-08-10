@@ -24,8 +24,11 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class AdherenceJob {
+    private static final Logger LOG = LoggerFactory.getLogger(AdherenceJob.class);
     public static void main(String[] args) throws Exception {
         JobConfig jobConfig = JobConfig.fromArgs(args);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -48,7 +51,19 @@ public class AdherenceJob {
         env.enableCheckpointing(jobConfig.getCheckpointConfig().intervalMs());
         env.getCheckpointConfig().setMinPauseBetweenCheckpoints(jobConfig.getCheckpointConfig().minPauseMs());
         env.getCheckpointConfig().setTolerableCheckpointFailureNumber(jobConfig.getCheckpointConfig().tolerableFailures());
-        env.getCheckpointConfig().setCheckpointStorage(jobConfig.getCheckpointConfig().checkpointDirectory());
+        String checkpointDirectory = jobConfig.getCheckpointConfig().checkpointDirectory();
+        if (checkpointDirectory != null) {
+            env.getCheckpointConfig().setCheckpointStorage(checkpointDirectory);
+            LOG.info("Checkpoint storage set from checkpoint.dir: {}", checkpointDirectory);
+        } else {
+            // Running under the Flink operator: state.checkpoints.dir comes from
+            // the cluster configuration in flink-deployment.yaml, and Flink applies
+            // it without being told. Setting it here as well is what put the same
+            // path in two files that had to agree (#132).
+            LOG.info("checkpoint.dir not set - relying on the cluster's "
+                    + "state.checkpoints.dir. If that is unset too, Flink keeps "
+                    + "checkpoints in JobManager memory and they are lost on failure.");
+        }
 
         RxFillEventSource.RxFillEventSourceResult fillEventSourceResult =
                 RxFillEventSource.build(env,kafkaConfig,watermarkConfig,params);
