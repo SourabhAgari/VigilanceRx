@@ -30,6 +30,9 @@ spec:
           - name: ghcr-pull
         containers:
           - name: flink-main-container
+            ports:
+              - name: metrics
+                containerPort: 9249
             env:
               - name: ENABLE_BUILT_IN_PLUGINS
                 value: flink-gs-fs-hadoop-1.18.1.jar
