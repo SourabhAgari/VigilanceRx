@@ -161,6 +161,17 @@
             <version>3.17.0</version>
         </dependency>
 
+        <!-- JSON layout: Cloud Logging can only filter on structured fields,
+        not on text. Also copied into /opt/flink/lib by the Dockerfile —
+        Flink initialises logging with its framework classloader, which
+        does not see plugins that live only in the shaded job jar. -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-layout-template-json</artifactId>
+            <version>${log4j.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
     </dependencies>
 
     <repositories>
