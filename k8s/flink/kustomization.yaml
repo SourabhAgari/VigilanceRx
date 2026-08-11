@@ -6,6 +6,7 @@ resources:
   - flink-deployment.yaml
   - secret-store.yaml
   - external-secrets.yaml
+  - podmonitor.yaml
 configurations:
   - imagetransformer.yaml
 images:
