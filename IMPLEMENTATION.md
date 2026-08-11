@@ -1193,8 +1193,46 @@ never `.name()`, and Flink metric labels use the name. `DeadLetterRecord` is
       per line. Applied via `spec.logConfiguration` in the FlinkDeployment,
       not the in-JAR `log4j2.properties` (which the cluster never reads).
       Drops the `/tmp/adherence-job.log` file appender
-- [ ] #148 `.name()` on every operator (savepoint-safe; `.uid()` is what
+- [ ] #148 ◐ `.name()` on every operator (savepoint-safe; `.uid()` is what
       drives state) + real logging in operators, sources and sinks
+      — **naming half done 2026-08-11**; logging half deliberately deferred
+      behind #147 (MDC standard fields) and #149 (Kafka coordinates), whose
+      fields the dead-letter WARN needs. Log statements are independent of
+      the layout, so nothing is wasted by waiting — but writing that WARN
+      twice would be.
+      13 `.name()` calls added beside the existing `.uid()`s, **same string
+      for both**: the `operator_name` a support engineer reads in an alert
+      then matches the identifier used when discussing savepoints. 9 in
+      `AdherenceJob`, 1 in `KafkaTypedSourceBuilder` (the dead-letter split,
+      shared by all three sources), 3 watermark operators. Sources already
+      carried names — `env.fromSource(..., sourceName + "-source")` supplies
+      one — which is why they alone read correctly in #146's output.
+      `AdherenceJobTopologyTest` gained `operatorNamesAreAssignedAndFrozen`
+      (4/4 green, 128 tests overall, 0 failures). Sinks are excluded from the
+      frozen set on purpose: Sink V2 expands one `sinkTo` into Writer and
+      Committer and decorates the name, so asserting the exact string would
+      break on a Flink upgrade for no benefit.
+      Verified live after deploy, not just in the test — all 22
+      `operator_name` labels on `:9249/metrics` now readable:
+      `Co_Process_Broadcast` → `chronic_class_filter`,
+      `Co_Process_Broadcast_Keyed` → `adherence_process`, and the three
+      indistinguishable `Sink:_Writer`s → `gap_risk_alerts_sink`,
+      `lapsed_alerts_sink`, `pdc_snapshots_sink`, `dead_letter_sink`, each
+      with a `:_Writer` / `:_Committer` pair. Confirmed through Prometheus
+      as well as the endpoint: the `gapRiskAlertsEmitted` query returns
+      `operator_name="adherence_process"` alongside `component="taskmanager"`
+      (from #146's `podTargetLabels`) and the pod name. **This is the
+      operator-label contract #151 and #152 build on.**
+      **Finding for #150**: that same query returned `gapRiskAlertsEmitted`
+      on *two* operators — `adherence_process` and `chronic_class_filter` —
+      both zero. `AdherenceMetricsReporter`'s constructor creates all four
+      counters in whichever operator calls `register()`, and both operators
+      call it, so each carries two counters it will never increment.
+      Harmless arithmetically, but a panel grouped by `operator_name` shows a
+      permanently-flat phantom series beside the real one, which reads as a
+      pipeline bug rather than a registration quirk. #150 owns the fix
+      (register only what an operator uses) since it touches that class
+      anyway
 - [ ] #149 Kafka topic/partition/offset carried through `KafkaSourceResult`
       and `DeadLetterRecord` to dead-letter **headers** — additive, no Avro
       schema, no registry one-way door (D67)
