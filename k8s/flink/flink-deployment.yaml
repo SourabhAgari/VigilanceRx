@@ -13,6 +13,8 @@ spec:
     taskmanager.numberOfTaskSlots: "1"
     state.checkpoints.dir: gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-ckpt
     state.savepoints.dir: gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-savepoints
+    metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+    metrics.reporter.prom.port: "9249"
 
   jobManager:
     resource:
