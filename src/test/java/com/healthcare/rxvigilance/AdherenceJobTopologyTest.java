@@ -52,6 +52,33 @@ class AdherenceJobTopologyTest  {
                         .isNotNull());
     }
 
+    /**
+     * #148: Flink derives Prometheus metric labels from the operator NAME, not the UID.
+     * Unnamed operators arrive as "Co_Process_Broadcast_Keyed" and three indistinguishable
+     * "Sink:_Writer"s — confirmed against the live endpoint in #146. Dashboards (#151) and
+     * alert annotations (#152) key on these labels, so a rename empties a panel rather than
+     * failing a build. Frozen here, like the UIDs above and the descriptor names below.
+     */
+    @Test
+    void operatorNamesAreAssignedAndFrozen() throws Exception {
+        Set<String> names = buildGraph().getStreamNodes().stream()
+                .map(StreamNode::getOperatorName)
+                .collect(Collectors.toSet());
+
+        assertThat(names).contains(
+                "chronic-class-filter",
+                "adherence-process",
+                "rx-fill-events-watermarks",
+                "ndc-drug-class-ref-watermarks",
+                "alert-lead-time-ref-watermarks",
+                "rx-fill-events-dead-letter-split",
+                "ndc-drug-class-ref-dead-letter-split",
+                "alert-lead-time-ref-dead-letter-split",
+                "rx-fill-events-dead-letter-record",
+                "ndc-drug-class-ref-dead-letter-record",
+                "alert-lead-time-ref-dead-letter-record");
+    }
+
     @Test
     void operatorUidsAreAssignedAndFrozen() throws Exception {
         Set<String> uids = buildGraph().getStreamNodes().stream()

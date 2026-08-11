@@ -112,6 +112,7 @@ public final class KafkaTypedSourceBuilder<T> {
 
         return raw.process(new DeadLetterSplitFunction<>(deadLetterTag))
                 .returns(TypeInformation.of(valueType))
+                .name(sourceName + "-dead-letter-split")
                 .uid(sourceName + "-dead-letter-split");
     }
 

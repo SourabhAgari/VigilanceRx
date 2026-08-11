@@ -47,6 +47,7 @@ public class DrugClassRefKafkaSource {
         SingleOutputStreamOperator<DrugClassRefUpdate> watermarked = events
                 .assignTimestampsAndWatermarks(WatermarkStrategy.<DrugClassRefUpdate>noWatermarks()
                         .withIdleness(watermarkConfig.idleness()))
+                .name("ndc-drug-class-ref-watermarks")
                 .uid("ndc-drug-class-ref-watermarks");
 
         return new DrugClassRefSourceResult(watermarked, deadLetters);

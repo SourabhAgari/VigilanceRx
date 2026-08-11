@@ -49,6 +49,7 @@ public class AlertLeadTimeKafkaSource {
         SingleOutputStreamOperator<AlertLeadTimeUpdate> watermarked = events
                 .assignTimestampsAndWatermarks(WatermarkStrategy.<AlertLeadTimeUpdate>noWatermarks()
                         .withIdleness(watermarkConfig.idleness()))
+                .name("alert-lead-time-ref-watermarks")
                 .uid("alert-lead-time-ref-watermarks");
 
         return new AlertLeadRefSourceResult(watermarked, deadLetters);
