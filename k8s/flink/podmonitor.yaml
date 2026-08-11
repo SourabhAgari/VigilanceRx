@@ -1,0 +1,29 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  # No namespace: Argo CD's destination.namespace places this, same as every
+  # other file in k8s/flink/ (see application.yaml).
+  name: rx-vigilance-flink
+  labels:
+    # Not decoration. The Prometheus object filters on
+    # podMonitorSelector.matchLabels.release — without this exact label the
+    # PodMonitor is created, listed by kubectl, synced green by Argo CD, and
+    # completely ignored by Prometheus. #146.
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      # Shared by JobManager and TaskManager, so one PodMonitor scrapes both.
+      # JM serves checkpoint/restart/uptime; TM serves watermarks, throughput
+      # and the adherence counters. Either one alone leaves half the panels empty.
+      app: rx-vigilance
+  podMetricsEndpoints:
+    # Port by NAME, resolved against the container's ports entry. Path defaults
+    # to /metrics and interval inherits the global 30s — both correct, so both
+    # left unset rather than duplicated.
+    - port: metrics
+  podTargetLabels:
+    # Copies the pod's own label onto every metric, so panels can filter on
+    # component="taskmanager" instead of matching generated pod-name hashes
+    # that change on every restart. Needed by #151.
+    - component
