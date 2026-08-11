@@ -35,3 +35,5 @@ spec:
       kind: SecretStore
     - group: external-secrets.io
       kind: ExternalSecret
+    - group: monitoring.coreos.com
+      kind: PodMonitor
