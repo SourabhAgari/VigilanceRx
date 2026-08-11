@@ -46,4 +46,4 @@ jobs:
 
       - name: Docker build (no push)
         if: github.event_name == 'pull_request'
-        run: docker build -t rx-vigilance:ci .
+        run: docker build --build-arg GIT_SHA="${{ github.sha }}" -t rx-vigilance:ci .
