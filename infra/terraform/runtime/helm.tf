@@ -176,6 +176,12 @@ resource "helm_release" "external_secrets" {
   # No depends_on cert-manager: this chart runs its own cert-controller for the
   # webhook, unlike the Flink operator (§10 chain).
   values = [<<-EOT
+    # CRDs are installed by `make infra-up`, not by this release. This chart
+    # ships them under templates/ rather than the reserved crds/ folder, so
+    # Helm treats them as release resources and deletes them on any rollback
+    # or uninstall — which is what stripped ExternalSecret in #157. Owning
+    # them outside the release makes that impossible.
+    installCRDs: false
     serviceAccount:
       # Pinned, not left to the chart's generated name. The Workload Identity
       # binding in platform/secrets.tf names the

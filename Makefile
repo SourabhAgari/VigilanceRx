@@ -29,16 +29,28 @@ fetch:
 
 # terraform run time related
 TF_RUNTIME := infra/terraform/runtime
+# ESO app version. MUST match the appVersion of the chart version pinned in
+# infra/terraform/runtime/helm.tf (helm_release.external_secrets). Chart 2.9.0
+# has appVersion v2.9.0 — these are separate numbers that happen to match.
+# Verify with: helm show chart external-secrets --repo https://charts.external-secrets.io --version <chart>
+ESO_VERSION := v2.9.0
+ESO_CRDS := https://raw.githubusercontent.com/external-secrets/external-secrets/$(ESO_VERSION)/deploy/crds/bundle.yaml
 
 infra-up:
-	terraform -chdir=$(TF_RUNTIME) apply -auto-approve
+	terraform -chdir=$(TF_RUNTIME) apply -auto-approve \
+		-target=google_container_cluster.vigilance-rx \
+		-target=google_container_node_pool.primary
+
 	$$(terraform -chdir=$(TF_RUNTIME) output -raw kubeconfig_command)
+
+	kubectl apply --server-side -f $(ESO_CRDS)
+
+	terraform -chdir=$(TF_RUNTIME) apply -auto-approve
+
 	kubectl apply -f k8s/namespace.yaml
-	# flink-serviceaccount.yaml and flink-rbac.yaml are deliberately NOT applied
-    # here: k8s/flink/ is owned by Argo CD from #114 (D54). Two things with
-    # authority over the same resources is what GitOps exists to remove.
 	kubectl apply -f k8s/argocd/appproject.yaml
 	kubectl apply -f k8s/argocd/application.yaml
+
 	$(MAKE) infra-verify
 
 infra-down:
@@ -49,10 +61,21 @@ infra-verify:
 	kubectl wait --for=condition=Ready pod --all -n flink-system --timeout=300s
 	kubectl wait --for=condition=Ready pod --all -n monitoring --timeout=600s
 	kubectl wait --for=condition=Ready pod --all -n argocd --timeout=300s
-	 @kubectl get sa flink -n rx-vigilance \
-                    -o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}' 2>/dev/null \
-                    && echo \
-                    || echo "flink SA not present — created by Argo CD from #114 (D54)"
+
+	@kubectl get sa flink -n rx-vigilance \
+		-o jsonpath='{.metadata.annotations.iam.gke.io/gcp-service-account}' 2>/dev/null \
+		&& echo \
+		|| echo "flink SA not present — created by Argo CD from #114 (D54)"
+
+	@kubectl get crd externalsecrets.external-secrets.io >/dev/null
+
+	kubectl wait \
+		--for=condition=Ready \
+		externalsecret/kafka-credentials \
+		-n rx-vigilance \
+		--timeout=300s
+
 	@kubectl describe secret kafka-credentials -n rx-vigilance | grep sasl-
+
 	@echo "✔ runtime stack healthy"
 
