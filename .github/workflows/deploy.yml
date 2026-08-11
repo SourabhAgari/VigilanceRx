@@ -57,7 +57,10 @@ jobs:
         env:
           TAG: ${{ github.sha }}
         run: |
-          docker build -t "$IMAGE:$TAG" .
+          # --build-arg GIT_SHA: bakes the commit into RXV_IMAGE_TAG so every log
+          # line carries the deployment it came from (#147). Same value as the
+          # image tag, so the two cannot drift.
+          docker build --build-arg GIT_SHA="$TAG" -t "$IMAGE:$TAG" .
           docker push "$IMAGE:$TAG"
           echo "pushed $IMAGE:$TAG"
 

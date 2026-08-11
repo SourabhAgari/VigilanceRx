@@ -16,6 +16,71 @@ spec:
     metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
     metrics.reporter.prom.port: "9249"
 
+    #147: the cluster reads /opt/flink/conf/log4j-console.properties, NOT the
+    # log4j2.properties inside the job jar. The operator writes this map into that
+    # file. Two appenders on purpose — see the comments below.
+    logConfiguration:
+      "log4j-console.properties": |
+        rootLogger.level = INFO
+        rootLogger.appenderRef.console.ref = ConsoleAppender
+        rootLogger.appenderRef.rolling.ref = RollingFileAppender
+  
+        # Our code at INFO, frameworks at WARN. Flink and Kafka at INFO produce
+        # enormous volume for little value, and Cloud Logging bills per GB.
+  
+        logger.rxvigilance.name = com.healthcare.rxvigilance
+        logger.rxvigilance.level = INFO
+  
+        logger.flink.name = org.apache.flink
+        logger.flink.level = WARN
+  
+        logger.kafka.name = org.apache.kafka
+        logger.kafka.level = WARN
+  
+        logger.pekko.name = org.apache.pekko
+        logger.pekko.level = WARN
+  
+        logger.hadoop.name = org.apache.hadoop
+        logger.hadoop.level = WARN
+  
+        logger.zookeeper.name = org.apache.zookeeper
+        logger.zookeeper.level = WARN
+  
+        # JSON to stdout: GKE ships container stdout to Cloud Logging, which can
+        # only filter on structured fields. Template baked into the image at
+        # /opt/flink/conf by the Dockerfile — file:, not classpath:, because the
+        # cluster's Log4j cannot read resources inside the job JAR.
+  
+        appender.console.name = ConsoleAppender
+        appender.console.type = CONSOLE
+        appender.console.layout.type = JsonTemplateLayout
+        appender.console.layout.eventTemplateUri = file:///opt/flink/conf/log4j2-gcp-layout.json
+        
+        # Plain text on purpose: this file is what the Flink Web UI's Logs tab
+        # reads, and JSON is unreadable there. Pod-local, so it costs nothing in
+        # Cloud Logging.
+
+        appender.rolling.name = RollingFileAppender
+        appender.rolling.type = RollingFile
+        appender.rolling.append = true
+        appender.rolling.fileName = ${sys:log.file}
+        appender.rolling.filePattern = ${sys:log.file}.%i
+        
+        appender.rolling.layout.type = PatternLayout
+        appender.rolling.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
+        
+        appender.rolling.policies.type = Policies
+        appender.rolling.policies.size.type = SizeBasedTriggeringPolicy
+        appender.rolling.policies.size.size = 100MB
+        appender.rolling.policies.startup.type = OnStartupTriggeringPolicy
+        
+        appender.rolling.strategy.type = DefaultRolloverStrategy
+        appender.rolling.strategy.max = 10
+        
+        logger.netty.name = org.apache.flink.shaded.akka.org.jboss.netty.channel.DefaultChannelPipeline
+        logger.netty.level = OFF
+  
+
   jobManager:
     resource:
       memory: "2048m"

@@ -1,0 +1,53 @@
+{
+  "timestamp": {
+    "$resolver": "timestamp",
+    "pattern": {
+      "format": "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+      "timeZone": "UTC"
+    }
+  },
+  "severity": {
+    "$resolver": "pattern",
+    "pattern": "%level{WARN=WARNING, TRACE=DEBUG, FATAL=EMERGENCY}",
+    "stackTraceEnabled": false
+  },
+  "message": {
+    "$resolver": "message",
+    "stringified": true
+  },
+  "logger": {
+    "$resolver": "logger",
+    "field": "name"
+  },
+  "thread": {
+    "$resolver": "thread",
+    "field": "name"
+  },
+  "service": "rx-vigilance",
+  "jobName": "adherence-job",
+  "imageTag": {
+    "$resolver": "pattern",
+    "pattern": "${env:RXV_IMAGE_TAG:-unknown}"
+  },
+  "exception": {
+    "className": {
+      "$resolver": "exception",
+      "field": "className"
+    },
+    "message": {
+      "$resolver": "exception",
+      "field": "message"
+    },
+    "stackTrace": {
+      "$resolver": "exception",
+      "field": "stackTrace",
+      "stackTrace": {
+        "stringified": true
+      }
+    }
+  },
+  "mdc": {
+    "$resolver": "mdc",
+    "flatten": true
+  }
+}
