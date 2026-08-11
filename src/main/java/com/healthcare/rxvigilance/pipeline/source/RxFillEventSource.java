@@ -40,6 +40,7 @@ public final class RxFillEventSource {
 
         DataStream<RxFillEvent> watermarked = events
                 .assignTimestampsAndWatermarks(RxFillWatermarkStrategy.create(watermarkConfig))
+                .name("rx-fill-events-watermarks")
                 .uid("rx-fill-events-watermarks");
 
         return new RxFillEventSourceResult(watermarked, deadLetters);

@@ -83,6 +83,7 @@ public class AdherenceJob {
         SingleOutputStreamOperator<EnrichedFillEvent> enrichedFillEvents = fillEvents
                 .connect(drugClassBroadcast)
                 .process(new ChronicClassFilterFunction())
+                .name("chronic-class-filter")
                 .uid("chronic-class-filter");
 
         KeyedStream<EnrichedFillEvent, Tuple2<String, String>> keyedFillEvents = enrichedFillEvents
@@ -95,32 +96,40 @@ public class AdherenceJob {
         SingleOutputStreamOperator<Void> adherenceResults = keyedFillEvents
                 .connect(leadTimeBroadcast)
                 .process(new AdherenceProcessFunction(stateBackEndConfig, defaultAlertDays))
+                .name("adherence-process")
                 .uid("adherence-process");
 
         adherenceResults.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)
                 .sinkTo(AlertKafkaSinks.gapRiskAlertSink(env, kafkaConfig, params))
+                .name("gap-risk-alerts-sink")
                 .uid("gap-risk-alerts-sink");
 
         adherenceResults.getSideOutput(AdherenceProcessFunction.LAPSED_ALERT_TAG)
                 .sinkTo(AlertKafkaSinks.lapsedAlertSink(env, kafkaConfig, params))
+                .name("lapsed-alerts-sink")
                 .uid("lapsed-alerts-sink");
 
         adherenceResults.getSideOutput(AdherenceProcessFunction.PDC_SNAPSHOT_OUTPUT_TAG)
                 .sinkTo(AlertKafkaSinks.pdcSnapshotSink(env, kafkaConfig, params))
+                .name("pdc-snapshots-sink")
                 .uid("pdc-snapshots-sink");
 
         DataStream<DeadLetterRecord> fillEventDeadLetters =
                 fillEventSourceResult.deadLetters().map(DeadLetterRecord::from)
+                        .name("rx-fill-events-dead-letter-record")
                         .uid("rx-fill-events-dead-letter-record");
         DataStream<DeadLetterRecord> drugClassDeadLetters =
                 drugClassRefResult.deadLetters().map(DeadLetterRecord::from)
+                        .name("ndc-drug-class-ref-dead-letter-record")
                         .uid("ndc-drug-class-ref-dead-letter-record");
         DataStream<DeadLetterRecord> leadTimeDeadLetters =
                 leadTimeResult.deadLetters().map(DeadLetterRecord::from)
+                        .name("alert-lead-time-ref-dead-letter-record")
                         .uid("alert-lead-time-ref-dead-letter-record");
 
         fillEventDeadLetters.union(drugClassDeadLetters, leadTimeDeadLetters)
                 .sinkTo(AlertKafkaSinks.deadLetterSink(env, kafkaConfig, params))
+                .name("dead-letter-sink")
                 .uid("dead-letter-sink");
     }
 }
