@@ -9,11 +9,16 @@ import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.Properties;
 
 public class KafkaTypedSinkBuilder<T> {
+
+    private static final Logger LOG = LoggerFactory.getLogger(KafkaTypedSinkBuilder.class);
+
     private final Class<T> valueType;
     private KafkaConnectionConfig kafkaConfig;
     private ParameterTool params;
@@ -59,6 +64,14 @@ public class KafkaTypedSinkBuilder<T> {
         env.getConfig().registerTypeWithKryoSerializer(valueType, RecordKryoSerializer.class);
 
         String topic = params.get(topicParamKey, defaultTopic);
+        // Hoisted so the logged prefix and the configured prefix are one expression, not two
+        // copies. A shared prefix between two EXACTLY_ONCE jobs fences their producers off
+        // each other, and nothing in the resulting failure names the prefix.
+        String transactionalIdPrefix = "rx-vigilance-" + topic;
+        String valueTypeName = valueType.getSimpleName();
+
+        LOG.info("Kafka sink configured: valueType={} topic={} deliveryGuarantee={} transactionalIdPrefix={}",
+                valueTypeName, topic, DeliveryGuarantee.EXACTLY_ONCE, transactionalIdPrefix);
 
         KafkaRecordSerializationSchema<T> recordSerializer = KafkaRecordSerializationSchema.<T>builder()
                 .setTopic(topic)

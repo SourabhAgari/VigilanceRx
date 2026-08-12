@@ -5,6 +5,7 @@ import com.healthcare.rxvigilance.domain.*;
 import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
 import com.healthcare.rxvigilance.domain.enums.TimerStage;
+import com.healthcare.rxvigilance.logging.LogCapture;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -13,6 +14,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.operators.co.CoBroadcastWithKeyedOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.KeyedBroadcastOperatorTestHarness;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -371,6 +373,114 @@ class AdherenceProcessFunctionTest {
         assertThat(afterReversal.currentSupplyEndDate()).isNull();
         assertThat(afterReversal.activeTimerTimestamp()).isNull();
         assertThat(afterReversal.activeTimerStage()).isNull();
+    }
+
+    @Test
+    void timerRegistrationIsLoggedAtDebugWithClaimIdAndTimestamp() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        long expectedTimerTs = epochMillis(fillDate.plusDays(30).minusDays(5));
+
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processElement(
+                    fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                    epochMillis(fillDate));
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("Registered GAP_RISK timer")
+                            && line.contains("claimId=claim-1")
+                            && line.contains("timerTs=" + expectedTimerTs));
+        }
+    }
+
+    @Test
+    void missingLeadTimeLookupNamesTheKeyThatMissedAndTheFallback() throws Exception {
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+
+        // No broadcast entry at all — the fallback path, and the one a bad ref topic produces
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processElement(
+                    fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                    epochMillis(fillDate));
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("key=CHRONIC_CARDIAC|RETAIL")
+                            && line.contains("default of " + DEFAULT_LEAD_DAYS + " days"));
+        }
+        assertThat(function().missingLeadTimeCount()).isEqualTo(1L);
+    }
+
+    @Test
+    void lapsedAlertEmissionIsLoggedWithTheAlertIdThatReachesKafka() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+
+        // First advance fires GAP_RISK and re-arms the timer at the supply end date;
+        // the second advance is the one that reaches the LAPSED stage.
+        harness.processWatermark(function().currentadherenceState().activeTimerTimestamp());
+        long lapsedTimerTs = function().currentadherenceState().activeTimerTimestamp();
+
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processWatermark(lapsedTimerTs);
+
+            List<LapsedAlert> alerts = harness.getSideOutput(AdherenceProcessFunction.LAPSED_ALERT_TAG)
+                    .stream().map(StreamRecord::getValue).toList();
+            assertThat(alerts).hasSize(1);
+            String alertId = alerts.get(0).alertId();
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("LapsedAlert emitted")
+                            && line.contains("alertId=" + alertId));
+        }
+        assertThat(function().currentadherenceState().activeTimerTimestamp()).isNull();
+        assertThat(function().lapsedAlertsEmittedCount()).isEqualTo(1L);
+    }
+
+    @Test
+    void timerFiringWithNoStateLeftIsIgnoredAndSaysSo() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+        long timerTs = function().currentadherenceState().activeTimerTimestamp();
+
+        // State TTL expiry leaves exactly this: a registered timer whose state is gone.
+        function().forceAdherenceStateForTest(null);
+
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processWatermark(timerTs);
+
+            assertThat(logs.lines()).anyMatch(line -> line.contains("reason=no-state"));
+        }
+        assertThat(harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)).isNullOrEmpty();
+    }
+
+    @Test
+    void timerFiringWhenStateHasNoActiveTimerIsIgnoredAndSaysSo() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+
+        AdherenceState current = function().currentadherenceState();
+        long timerTs = current.activeTimerTimestamp();
+        function().forceAdherenceStateForTest(new AdherenceState(
+                current.currentSupplyEndDate(), current.lastFillDate(), current.totalDaysCovered(),
+                current.activeCoverageIntervals(), current.alertLeadDays(), null, null));
+
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processWatermark(timerTs);
+
+            assertThat(logs.lines()).anyMatch(line -> line.contains("reason=no-active-timer"));
+        }
     }
 
     private long epochMillis(LocalDate date) {

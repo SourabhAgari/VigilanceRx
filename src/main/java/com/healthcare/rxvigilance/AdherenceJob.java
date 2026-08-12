@@ -43,6 +43,30 @@ public class AdherenceJob {
         StateBackEndConfig stateBackEndConfig = jobConfig.getStateBackEndConfig();
 
         int defaultAlertDays = params.getInt("alert.lead.days.default", 7);
+        // Runs on the JobManager at submission, so this prints once per job start rather
+        // than once per subtask. Named fields, never the whole ParameterTool: it carries
+        // KAFKA_SASL_PASSWORD, and a dump would put it in Cloud Logging (§9).
+        // Level-guarded so the accessors and params lookups are skipped when INFO is off
+        // (Sonar S2629 — arguments are evaluated before the call, regardless of level).
+        if (LOG.isInfoEnabled()) {
+            LOG.info("Starting adherence-job: brokers={} schemaRegistry={} saslConfigured={} "
+                            + "topics=[{}, {}, {}] checkpointIntervalMs={} checkpointMinPauseMs={} "
+                            + "tolerableCheckpointFailures={} stateTtlDays={} "
+                            + "watermarkOutOfOrderness={} watermarkIdleness={} alertLeadDaysDefault={}",
+                    kafkaConfig.brokers(),
+                    kafkaConfig.schemaRegistryUrl(),
+                    kafkaConfig.hasSaslCredentials(),
+                    params.get("kafka.topic.rx-fill-events", "rx-fill-events"),
+                    params.get("kafka.topic.ndc-drug-class-ref", "ndc-drug-class-ref"),
+                    params.get("kafka.topic.alert-lead-time-ref", "alert-lead-time-ref"),
+                    jobConfig.getCheckpointConfig().intervalMs(),
+                    jobConfig.getCheckpointConfig().minPauseMs(),
+                    jobConfig.getCheckpointConfig().tolerableFailures(),
+                    stateBackEndConfig.ttlDays(),
+                    watermarkConfig.outOfOrderness(),
+                    watermarkConfig.idleness(),
+                    defaultAlertDays);
+        }
 
         env.getConfig().registerTypeWithKryoSerializer(EnrichedFillEvent.class, RecordKryoSerializer.class);
         env.getConfig().addDefaultKryoSerializer(Record.class, RecordKryoSerializer.class);

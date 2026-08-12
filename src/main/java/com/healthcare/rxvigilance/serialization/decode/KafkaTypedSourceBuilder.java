@@ -14,6 +14,8 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.OutputTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,6 +23,9 @@ import java.util.List;
 import java.util.Objects;
 
 public final class KafkaTypedSourceBuilder<T> {
+
+    private static final Logger LOG = LoggerFactory.getLogger(KafkaTypedSourceBuilder.class);
+
     private final Class<T> valueType;
     private final List<Class<?>> additionalKryoTypes = new ArrayList<>();
     private KafkaConnectionConfig kafkaConfig;
@@ -96,6 +101,12 @@ public final class KafkaTypedSourceBuilder<T> {
         for (Class<?> type : additionalKryoTypes) {
             env.getConfig().registerTypeWithKryoSerializer(type, RecordKryoSerializer.class);
         }
+
+        String topic = params.get(topicParamKey, defaultTopic);
+        String consumerGroupId = params.get("kafka.consumer.group.id", "rx-vigilance-flink");
+
+        LOG.info("Kafka source configured: name={} topic={} groupId={}",
+                sourceName, topic, consumerGroupId);
 
         KafkaSource<KafkaSourceResult<T>> source = KafkaSource.<KafkaSourceResult<T>>builder()
                 .setBootstrapServers(kafkaConfig.brokers())

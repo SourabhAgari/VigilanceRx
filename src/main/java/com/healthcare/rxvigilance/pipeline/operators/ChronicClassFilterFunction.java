@@ -15,6 +15,8 @@ import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.co.BroadcastProcessFunction;
 import org.apache.flink.util.Collector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +24,15 @@ import java.util.List;
 public class ChronicClassFilterFunction
         extends BroadcastProcessFunction<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent>
         implements CheckpointedFunction {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ChronicClassFilterFunction.class);
+
+    // Ref tables run to thousands of rows; one INFO per row would bury the startup log.
+    // The first entry and every 500th are enough to tell "loading" from "never arrived".
+    private static final long BROADCAST_LOG_EVERY = 500L;
+
+    // Per subtask and reset on restart: a log counter, not a metric. #150 adds the metric.
+    private transient long broadcastEntriesApplied;
 
     public static final MapStateDescriptor<String, DrugClassRef> NDC_CLASS_DESCRIPTOR =
             new MapStateDescriptor<>("ndc-class-state", Types.STRING, TypeInformation.of(DrugClassRef.class));
@@ -44,6 +55,7 @@ public class ChronicClassFilterFunction
     @Override
     public void open(Configuration parameters) {
         droppedCounter = AdherenceMetricsReporter.register(getRuntimeContext()).chronicFilterDropped();
+        broadcastEntriesApplied = 0L;
     }
 
     @Override
@@ -55,6 +67,10 @@ public class ChronicClassFilterFunction
         DrugClassRef ref = broadcastState.get(event.ndcCode());
         if (ref == null) {
             bufferState.add(event);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Buffering fill event until its drug class ref arrives: claimId={} ndcCode={}",
+                        event.claimId(), event.ndcCode());
+            }
             return;
         }
         filterAndEmit(event,broadcastState,collector);
@@ -66,6 +82,11 @@ public class ChronicClassFilterFunction
         DrugClassRef ref = broadcastState.get(event.ndcCode());
         if(ref == null || !ref.trackable()) {
             droppedCounter.inc();
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Dropping fill event: claimId={} ndcCode={} reason={}",
+                        event.claimId(), event.ndcCode(),
+                        ref == null ? "no-drug-class-ref" : "not-trackable");
+            }
             return;
         }
         collector.collect(new EnrichedFillEvent(event,ref.drugClass()));
@@ -75,10 +96,17 @@ public class ChronicClassFilterFunction
         BroadcastState<String, DrugClassRef> broadcastState = context.getBroadcastState(NDC_CLASS_DESCRIPTOR);
         broadcastState.put(drugClassRefUpdate.ndcCode(), drugClassRefUpdate.drugClassRef());
 
+        broadcastEntriesApplied++;
+        if (broadcastEntriesApplied == 1L || broadcastEntriesApplied % BROADCAST_LOG_EVERY == 0L) {
+            LOG.info("Drug class broadcast applied {} entries on this subtask", broadcastEntriesApplied);
+        }
+
         List<RxFillEvent> remaining = new ArrayList<>();
+        int released = 0;
         for (RxFillEvent buffered : bufferState.get()) {
             if (buffered.ndcCode().equals(drugClassRefUpdate.ndcCode())) {
                 filterAndEmit(buffered, broadcastState, collector);
+                released++;
             } else {
                 remaining.add(buffered);
             }
@@ -86,6 +114,11 @@ public class ChronicClassFilterFunction
         bufferState.clear();
         for (RxFillEvent r : remaining) {
             bufferState.add(r);
+        }
+
+        if(released > 0 && LOG.isDebugEnabled()) {
+            LOG.debug("Released buffered fill events after drug class ref arrived: ndcCode={} released={}",
+                    drugClassRefUpdate.ndcCode(), released);
         }
     }
 

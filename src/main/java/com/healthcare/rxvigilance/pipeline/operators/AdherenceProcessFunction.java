@@ -18,14 +18,24 @@ import org.apache.flink.metrics.Counter;
 import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
 public class AdherenceProcessFunction extends
         KeyedBroadcastProcessFunction<Tuple2<String, String>, EnrichedFillEvent, AlertLeadTimeUpdate, Void> {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AdherenceProcessFunction.class);
+
+    // Same reasoning as ChronicClassFilterFunction: a count, logged sparsely, so an
+    // empty broadcast is visible. Per subtask, reset on restart — a log, not a metric.
+    private static final long BROADCAST_LOG_EVERY = 500L;
+    private transient long leadTimeEntriesApplied;
 
     public static final OutputTag<GapRiskAlert> GAP_RISK_ALERT_TAG =
             new OutputTag<>("gap-risk-alert") {
@@ -66,12 +76,19 @@ public class AdherenceProcessFunction extends
         missingLeadTimeCounter = metrics.missingLeadTimeLookup();
         gapRiskAlertsEmittedCounter = metrics.gapRiskAlertsEmitted();
         lapsedAlertsEmittedCounter = metrics.lapsedAlertsEmitted();
+
+        leadTimeEntriesApplied = 0L;
     }
 
     @Override
     public void processElement(EnrichedFillEvent enrichedFillEvent,
                                ReadOnlyContext context
             , Collector<Void> collector) throws Exception {
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Processing fill event: claimId={} drugClass={} eventType={} fillDate={}",
+                    enrichedFillEvent.event().claimId(), enrichedFillEvent.drugClass(),
+                    enrichedFillEvent.event().eventType(), enrichedFillEvent.event().fillDate());
+        }
         if (enrichedFillEvent.event().eventType() == EventType.REVERSAL) {
             handleReversal(enrichedFillEvent, context);
             return;
@@ -84,6 +101,11 @@ public class AdherenceProcessFunction extends
 
         AdherenceState merged = IntervalMerger.merge(currentState, enrichedFillEvent.event());
         if (merged == currentState) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Fill event changed no coverage, ignoring: claimId={} drugClass={} "
+                                + "reason=duplicate-or-fully-covered",
+                        enrichedFillEvent.event().claimId(), enrichedFillEvent.drugClass());
+            }
             return;
         }
 
@@ -96,6 +118,8 @@ public class AdherenceProcessFunction extends
         Integer alertLeadDays = leadTimeState.get(compositeKey);
         if (alertLeadDays == null) {
             missingLeadTimeCounter.inc();
+            LOG.debug("No alert lead time for key={}, falling back to the configured default of {} days",
+                    compositeKey, defaultAlertLeadDays);
             alertLeadDays = defaultAlertLeadDays;
         }
 
@@ -105,6 +129,13 @@ public class AdherenceProcessFunction extends
                 .toInstant()
                 .toEpochMilli();
         context.timerService().registerEventTimeTimer(timerTimestamp);
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Registered GAP_RISK timer: claimId={} drugClass={} alertLeadDays={} "
+                            + "timerTs={} timerAt={} replacedTimerTs={}",
+                    enrichedFillEvent.event().claimId(), enrichedFillEvent.drugClass(), alertLeadDays,
+                    timerTimestamp, Instant.ofEpochMilli(timerTimestamp), currentState.activeTimerTimestamp());
+        }
 
         AdherenceState finalState = new AdherenceState(
                 merged.currentSupplyEndDate(), merged.lastFillDate(), merged.totalDaysCovered(),
@@ -120,6 +151,10 @@ public class AdherenceProcessFunction extends
     private void handleReversal(EnrichedFillEvent event, ReadOnlyContext context) throws IOException {
         AdherenceState currentState = adherenceState.value();
         if (currentState == null) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Reversal for a key with no state, ignoring: claimId={} originalClaimId={}",
+                        event.event().claimId(), event.event().originalClaimId());
+            }
             return;
         }
         RxFillEvent reversal = event.event();
@@ -143,6 +178,12 @@ public class AdherenceProcessFunction extends
                     reversal.fillDate(), context.timestamp()));
             lapsedAlertsEmittedCounter.inc();
 
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Reversal left zero coverage, corrective LapsedAlert emitted immediately: "
+                                + "claimId={} originalClaimId={} memberId={} drugClass={}",
+                        reversal.claimId(), reversal.originalClaimId(), memberId, drugClass);
+            }
+
             adherenceState.update(new AdherenceState(
                     null, unwound.lastFillDate(), 0, unwound.activeCoverageIntervals(),
                     unwound.alertLeadDays(), null, null));
@@ -156,6 +197,13 @@ public class AdherenceProcessFunction extends
                 .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
         context.timerService().registerEventTimeTimer(newTimerTimestamp);
 
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Reversal left coverage, GAP_RISK timer re-armed: claimId={} originalClaimId={} "
+                            + "timerTs={} timerAt={}",
+                    reversal.claimId(), reversal.originalClaimId(),
+                    newTimerTimestamp, Instant.ofEpochMilli(newTimerTimestamp));
+        }
+
         adherenceState.update(new AdherenceState(
                 unwound.currentSupplyEndDate(), unwound.lastFillDate(), unwound.totalDaysCovered(),
                 unwound.activeCoverageIntervals(), unwound.alertLeadDays(),
@@ -167,6 +215,11 @@ public class AdherenceProcessFunction extends
                                         Context ctx,
                                         Collector<Void> collector) throws Exception {
         ctx.getBroadcastState(LEAD_TIME_DESCRIPTOR).put(alertLeadTimeUpdate.drugClassAndChannel(), alertLeadTimeUpdate.alertLeadDays());
+
+        leadTimeEntriesApplied++;
+        if (leadTimeEntriesApplied == 1L || leadTimeEntriesApplied % BROADCAST_LOG_EVERY == 0L) {
+            LOG.info("Alert lead time broadcast applied {} entries on this subtask", leadTimeEntriesApplied);
+        }
     }
 
     AdherenceState currentadherenceState() throws IOException {
@@ -188,44 +241,107 @@ public class AdherenceProcessFunction extends
     @Override
     public void onTimer(long timestamp, OnTimerContext ctx, Collector<Void> out) throws Exception {
         AdherenceState state = adherenceState.value();
-        if (state == null || state.activeTimerTimestamp() == null
-                || !state.activeTimerTimestamp().equals(timestamp)) {
+        if (isStaleTimer(state, timestamp)) {
+            logStaleTimer(state, ctx, timestamp);
             return; // stale/orphaned timer — no longer matches what's currently active
         }
 
         String memberId = ctx.getCurrentKey().f0;
         String drugClass = ctx.getCurrentKey().f1;
 
-        if (state.activeTimerStage() == TimerStage.GAP_RISK) {
-            long projectedExhaustionMillis = state.currentSupplyEndDate()
-                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
-            if (projectedExhaustionMillis <= timestamp) {
-                return; // supply already exhausted relative to this firing — defensive no-op, spec step 2
-            }
-
-            ctx.output(GAP_RISK_ALERT_TAG, new GapRiskAlert(
-                    UUID.randomUUID().toString(), memberId, drugClass,
-                    state.currentSupplyEndDate(), state.alertLeadDays(), timestamp));
-            gapRiskAlertsEmittedCounter.inc();
-
-            ctx.timerService().registerEventTimeTimer(projectedExhaustionMillis);
-
-            adherenceState.update(new AdherenceState(
-                    state.currentSupplyEndDate(), state.lastFillDate(), state.totalDaysCovered(),
-                    state.activeCoverageIntervals(), state.alertLeadDays(),
-                    projectedExhaustionMillis, TimerStage.LAPSED));
-
-        } else if (state.activeTimerStage() == TimerStage.LAPSED) {
-            ctx.output(LAPSED_ALERT_TAG, new LapsedAlert(
-                    UUID.randomUUID().toString(), memberId, drugClass,
-                    state.currentSupplyEndDate(), timestamp));
-            lapsedAlertsEmittedCounter.inc();
-
-            adherenceState.update(new AdherenceState(
-                    state.currentSupplyEndDate(), state.lastFillDate(), state.totalDaysCovered(),
-                    state.activeCoverageIntervals(), state.alertLeadDays(),
-                    null, null)); // no more timer pending until the next fill restarts the cycle
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Timer fired: stage={} memberId={} drugClass={} firedTs={} firedAt={}",
+                    state.activeTimerStage(), memberId, drugClass,
+                    timestamp, Instant.ofEpochMilli(timestamp));
         }
+
+        if (state.activeTimerStage() == TimerStage.GAP_RISK) {
+            handleGapRiskTimer(state, ctx, timestamp, memberId, drugClass);
+        } else if (state.activeTimerStage() == TimerStage.LAPSED) {
+            handleLapsedTimer(state, ctx, timestamp, memberId, drugClass);
+        }
+    }
+
+    private void handleLapsedTimer(AdherenceState state, OnTimerContext ctx, long timestamp,
+                                   String memberId, String drugClass) throws IOException {
+        String alertId = UUID.randomUUID().toString();
+        ctx.output(LAPSED_ALERT_TAG, new LapsedAlert(
+                alertId, memberId, drugClass,
+                state.currentSupplyEndDate(), timestamp));
+        lapsedAlertsEmittedCounter.inc();
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("LapsedAlert emitted, no timer pending until the next fill: alertId={} memberId={} "
+                            + "drugClass={} supplyEndDate={} firedTs={}",
+                    alertId, memberId, drugClass, state.currentSupplyEndDate(), timestamp);
+        }
+
+        adherenceState.update(new AdherenceState(
+                state.currentSupplyEndDate(), state.lastFillDate(), state.totalDaysCovered(),
+                state.activeCoverageIntervals(), state.alertLeadDays(),
+                null, null)); // no more timer pending until the next fill restarts the cycle
+    }
+
+    private void handleGapRiskTimer(AdherenceState state, OnTimerContext ctx, long timestamp,
+                                    String memberId, String drugClass) throws IOException {
+        long projectedExhaustionMillis = state.currentSupplyEndDate()
+                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+        if (projectedExhaustionMillis <= timestamp) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Supply already exhausted at firing, no gap-risk alert: memberId={} "
+                                + "drugClass={} supplyEndDate={} firedTs={}",
+                        memberId, drugClass, state.currentSupplyEndDate(), timestamp);
+            }
+            return; // supply already exhausted relative to this firing — defensive no-op, spec step 2
+        }
+
+        String alertId = UUID.randomUUID().toString();
+        ctx.output(GAP_RISK_ALERT_TAG, new GapRiskAlert(
+                alertId, memberId, drugClass,
+                state.currentSupplyEndDate(), state.alertLeadDays(), timestamp));
+        gapRiskAlertsEmittedCounter.inc();
+
+        ctx.timerService().registerEventTimeTimer(projectedExhaustionMillis);
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("GapRiskAlert emitted, LAPSED timer registered: alertId={} memberId={} drugClass={} "
+                            + "supplyEndDate={} alertLeadDays={} nextTimerTs={} nextTimerAt={}",
+                    alertId, memberId, drugClass, state.currentSupplyEndDate(), state.alertLeadDays(),
+                    projectedExhaustionMillis, Instant.ofEpochMilli(projectedExhaustionMillis));
+        }
+
+        adherenceState.update(new AdherenceState(
+                state.currentSupplyEndDate(), state.lastFillDate(), state.totalDaysCovered(),
+                state.activeCoverageIntervals(), state.alertLeadDays(),
+                projectedExhaustionMillis, TimerStage.LAPSED));
+    }
+
+    private static boolean isStaleTimer(AdherenceState state, long timestamp) {
+        return state == null || state.activeTimerTimestamp() == null
+                || !state.activeTimerTimestamp().equals(timestamp);
+    }
+
+    private void logStaleTimer(AdherenceState state, OnTimerContext ctx, long timestamp) {
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Ignoring stale timer: key={} firedTs={} firedAt={} activeTimerTs={} reason={}",
+                    ctx.getCurrentKey(), timestamp, Instant.ofEpochMilli(timestamp),
+                    state == null ? null : state.activeTimerTimestamp(), staleTimerReason(state));
+        }
+    }
+
+    /**
+     * Three different situations produce the same silent return, and only one of them is
+     * suspicious: "timer-superseded" is the normal refill case, "no-active-timer" and
+     * "no-state" mean a timer outlived the state it belonged to. #148.
+     */
+    private static String staleTimerReason(AdherenceState state) {
+        if (state == null) {
+            return "no-state";
+        }
+        if (state.activeTimerTimestamp() == null) {
+            return "no-active-timer";
+        }
+        return "timer-superseded";
     }
 
     void forceAdherenceStateForTest(AdherenceState state) throws IOException {

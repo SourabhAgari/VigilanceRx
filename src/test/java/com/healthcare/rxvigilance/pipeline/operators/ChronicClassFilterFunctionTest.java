@@ -6,9 +6,11 @@ import com.healthcare.rxvigilance.domain.EnrichedFillEvent;
 import com.healthcare.rxvigilance.domain.RxFillEvent;
 import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
+import com.healthcare.rxvigilance.logging.LogCapture;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
 import org.apache.flink.streaming.api.operators.co.CoBroadcastWithNonKeyedOperator;
 import org.apache.flink.streaming.util.BroadcastOperatorTestHarness;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -126,6 +128,46 @@ class ChronicClassFilterFunctionTest {
                 .containsExactly(
                         new EnrichedFillEvent(eventA, "CHRONIC_CARDIAC"),
                         new EnrichedFillEvent(eventB, "DIABETES"));
+    }
+
+    @Test
+    void broadcastEntryCountIsLoggedSoAnEmptyBroadcastIsVisible() throws Exception {
+        try (LogCapture logs = new LogCapture(ChronicClassFilterFunction.class, Level.INFO)) {
+            harness.processBroadcastElement(new DrugClassRefUpdate("NDC-CHRONIC",
+                    new DrugClassRef("CHRONIC_CARDIAC", true)), 0L);
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("INFO") && line.contains("applied 1 entries"));
+        }
+    }
+
+    @Test
+    void bufferingAnEventWithoutItsDrugClassRefIsLoggedAtDebugWithClaimAndNdc() throws Exception {
+        try (LogCapture logs = new LogCapture(ChronicClassFilterFunction.class, Level.DEBUG)) {
+            harness.processElement(fillEvent("NDC-UNKNOWN", 0), 0L);
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("claimId=claim-1")
+                            && line.contains("ndcCode=NDC-UNKNOWN"));
+        }
+    }
+
+    @Test
+    void releasingBufferedEventsIsLoggedWithHowManyWereReleased() throws Exception {
+        harness.processElement(fillEvent("NDC-CHRONIC", 0), 0L);
+        harness.processElement(fillEvent("NDC-CHRONIC", 0), 1L);
+
+        try (LogCapture logs = new LogCapture(ChronicClassFilterFunction.class, Level.DEBUG)) {
+            harness.processBroadcastElement(new DrugClassRefUpdate("NDC-CHRONIC",
+                    new DrugClassRef("CHRONIC_CARDIAC", true)), 2L);
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("ndcCode=NDC-CHRONIC")
+                            && line.contains("released=2"));
+        }
+        assertThat(harness.extractOutputValues()).hasSize(2);
     }
 
     private RxFillEvent fillEvent(String ndcCode, int refillsAuthorized) {
