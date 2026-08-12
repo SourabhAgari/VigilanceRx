@@ -19,12 +19,15 @@ import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
 
 public final class AlertKafkaSinks {
+    private static final Logger LOG = LoggerFactory.getLogger(AlertKafkaSinks.class);
     private AlertKafkaSinks() {
     }
 
@@ -108,6 +111,7 @@ public final class AlertKafkaSinks {
         env.getConfig().addDefaultKryoSerializer(Record.class, RecordKryoSerializer.class);
 
         String topic = params.get("kafka.topic.dead-letter", "dead-letter");
+        LOG.info("Dead letter sink configured: topic={}", topic);
 
         KafkaRecordSerializationSchema<DeadLetterRecord> recordSerializer = deadLetterRecordSerializer(topic);
 

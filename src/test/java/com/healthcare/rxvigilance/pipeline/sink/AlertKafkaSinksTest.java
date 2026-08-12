@@ -4,13 +4,16 @@ import com.healthcare.rxvigilance.config.KafkaConnectionConfig;
 import com.healthcare.rxvigilance.domain.GapRiskAlert;
 import com.healthcare.rxvigilance.domain.LapsedAlert;
 import com.healthcare.rxvigilance.domain.PdcSnapshot;
+import com.healthcare.rxvigilance.logging.LogCapture;
 import com.healthcare.rxvigilance.serialization.deadletter.DeadLetterRecord;
+import com.healthcare.rxvigilance.serialization.encode.KafkaTypedSinkBuilder;
 import com.healthcare.rxvigilance.serialization.util.KafkaCoordinates;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -108,5 +111,31 @@ class AlertKafkaSinksTest {
 
         assertThat(producerRecord.headers().lastHeader("error-message")).isNotNull();
         assertThat(producerRecord.headers().lastHeader("source-topic")).isNull();
+    }
+
+    @Test
+    void sinkConstructionLogsTheResolvedTopicAndTransactionalIdPrefix() {
+        try (LogCapture logs = new LogCapture(KafkaTypedSinkBuilder.class, Level.INFO)) {
+            AlertKafkaSinks.gapRiskAlertSink(
+                    StreamExecutionEnvironment.getExecutionEnvironment(), KAFKA_CONFIG,
+                    ParameterTool.fromMap(Map.of("kafka.topic.gap-risk-alerts", "alerts-under-test")));
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("INFO")
+                            && line.contains("topic=alerts-under-test")
+                            && line.contains("transactionalIdPrefix=rx-vigilance-alerts-under-test"));
+        }
+    }
+
+    @Test
+    void deadLetterSinkConstructionLogsItsResolvedTopic() {
+        try (LogCapture logs = new LogCapture(AlertKafkaSinks.class, Level.INFO)) {
+            AlertKafkaSinks.deadLetterSink(
+                    StreamExecutionEnvironment.getExecutionEnvironment(), KAFKA_CONFIG,
+                    ParameterTool.fromMap(Map.of("kafka.topic.dead-letter", "dlq-under-test")));
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("INFO") && line.contains("topic=dlq-under-test"));
+        }
     }
 }
