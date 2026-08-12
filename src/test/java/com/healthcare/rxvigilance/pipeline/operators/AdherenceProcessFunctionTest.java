@@ -442,6 +442,47 @@ class AdherenceProcessFunctionTest {
         assertThat(function().lapsedAlertsEmittedCount()).isEqualTo(1L);
     }
 
+    @Test
+    void timerFiringWithNoStateLeftIsIgnoredAndSaysSo() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+        long timerTs = function().currentadherenceState().activeTimerTimestamp();
+
+        // State TTL expiry leaves exactly this: a registered timer whose state is gone.
+        function().forceAdherenceStateForTest(null);
+
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processWatermark(timerTs);
+
+            assertThat(logs.lines()).anyMatch(line -> line.contains("reason=no-state"));
+        }
+        assertThat(harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)).isNullOrEmpty();
+    }
+
+    @Test
+    void timerFiringWhenStateHasNoActiveTimerIsIgnoredAndSaysSo() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+
+        AdherenceState current = function().currentadherenceState();
+        long timerTs = current.activeTimerTimestamp();
+        function().forceAdherenceStateForTest(new AdherenceState(
+                current.currentSupplyEndDate(), current.lastFillDate(), current.totalDaysCovered(),
+                current.activeCoverageIntervals(), current.alertLeadDays(), null, null));
+
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processWatermark(timerTs);
+
+            assertThat(logs.lines()).anyMatch(line -> line.contains("reason=no-active-timer"));
+        }
+    }
+
     private long epochMillis(LocalDate date) {
         return date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
     }

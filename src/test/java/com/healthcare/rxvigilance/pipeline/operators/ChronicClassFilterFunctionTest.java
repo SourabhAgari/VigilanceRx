@@ -153,6 +153,23 @@ class ChronicClassFilterFunctionTest {
         }
     }
 
+    @Test
+    void releasingBufferedEventsIsLoggedWithHowManyWereReleased() throws Exception {
+        harness.processElement(fillEvent("NDC-CHRONIC", 0), 0L);
+        harness.processElement(fillEvent("NDC-CHRONIC", 0), 1L);
+
+        try (LogCapture logs = new LogCapture(ChronicClassFilterFunction.class, Level.DEBUG)) {
+            harness.processBroadcastElement(new DrugClassRefUpdate("NDC-CHRONIC",
+                    new DrugClassRef("CHRONIC_CARDIAC", true)), 2L);
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("ndcCode=NDC-CHRONIC")
+                            && line.contains("released=2"));
+        }
+        assertThat(harness.extractOutputValues()).hasSize(2);
+    }
+
     private RxFillEvent fillEvent(String ndcCode, int refillsAuthorized) {
         return new RxFillEvent(
                 EventType.FILL, "claim-1", "member-1", ndcCode,

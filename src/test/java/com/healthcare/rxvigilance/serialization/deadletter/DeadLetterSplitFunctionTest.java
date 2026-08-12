@@ -66,4 +66,22 @@ class DeadLetterSplitFunctionTest {
                     .noneMatch(line -> line.contains("[1, 2, 3]"));
         }
     }
+
+    @Test
+    void deadLetterWarningsAreSampledAfterTheFirst() throws Exception {
+        OneInputStreamOperatorTestHarness<KafkaSourceResult<String>, String> harness =
+                ProcessFunctionTestHarnesses.forProcessFunction(new DeadLetterSplitFunction<>(DEAD_LETTER_TAG));
+        harness.getExecutionConfig().registerTypeWithKryoSerializer(KafkaSourceResult.class, RecordKryoSerializer.class);
+
+        try (LogCapture logs = new LogCapture(DeadLetterSplitFunction.class, Level.WARN)) {
+            for (int i = 0; i < 100; i++) {
+                harness.processElement(KafkaSourceResult.<String>failure(new byte[]{1}, "bad bytes"), i);
+            }
+
+            // First and hundredth only — a poison-pill storm must not become 100 log lines
+            assertThat(logs.lines()).hasSize(2);
+        }
+        assertThat(harness.getSideOutput(DEAD_LETTER_TAG)).hasSize(100);
+    }
+
 }

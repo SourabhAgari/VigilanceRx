@@ -106,6 +106,7 @@ public class ChronicClassFilterFunction
         for (RxFillEvent buffered : bufferState.get()) {
             if (buffered.ndcCode().equals(drugClassRefUpdate.ndcCode())) {
                 filterAndEmit(buffered, broadcastState, collector);
+                released++;
             } else {
                 remaining.add(buffered);
             }
