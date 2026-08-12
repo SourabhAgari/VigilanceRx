@@ -15,6 +15,10 @@ spec:
     state.savepoints.dir: gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-savepoints
     metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
     metrics.reporter.prom.port: "9249"
+    # Routes java.util.logging (the GCS connector) through log4j so those lines
+    # are JSON too. Must be a JVM flag: JUL reads this property when its
+    # LogManager first initialises, which is too early for any config file.
+    env.java.opts.all: "-Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager"
 
     # #147: the cluster reads /opt/flink/conf/log4j-console.properties, NOT the
     # log4j2.properties inside the job jar. The operator writes this map into that
@@ -78,6 +82,9 @@ spec:
       
       appender.rolling.strategy.type = DefaultRolloverStrategy
       appender.rolling.strategy.max = 10
+      
+      logger.gcs.name = com.google.cloud.hadoop
+      logger.gcs.level = WARN  
       
       logger.netty.name = org.apache.flink.shaded.akka.org.jboss.netty.channel.DefaultChannelPipeline
       logger.netty.level = OFF
