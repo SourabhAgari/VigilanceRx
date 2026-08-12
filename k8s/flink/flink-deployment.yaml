@@ -54,7 +54,7 @@ spec:
         appender.console.name = ConsoleAppender
         appender.console.type = CONSOLE
         appender.console.layout.type = JsonTemplateLayout
-        appender.console.layout.eventTemplateUri = file:///opt/flink/conf/log4j2-gcp-layout.json
+        appender.console.layout.eventTemplateUri = file:///opt/flink/usrlib/log4j2-gcp-layout.json
         
         # Plain text on purpose: this file is what the Flink Web UI's Logs tab
         # reads, and JSON is unreadable there. Pod-local, so it costs nothing in
