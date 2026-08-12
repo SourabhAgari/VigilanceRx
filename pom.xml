@@ -173,6 +173,17 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- The GCS connector logs via java.util.logging, bypassing log4j
+        entirely, so those lines stay plain text however log4j is
+        configured. This bridge routes JUL into log4j. Same version
+        constraint as the layout jar — Flink's 2.17.1 wins parent-first. -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-jul</artifactId>
+            <version>${flink.log4j.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
     </dependencies>
 
     <repositories>
