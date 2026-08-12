@@ -5,6 +5,7 @@ import com.healthcare.rxvigilance.domain.*;
 import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
 import com.healthcare.rxvigilance.domain.enums.TimerStage;
+import com.healthcare.rxvigilance.logging.LogCapture;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -13,6 +14,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.operators.co.CoBroadcastWithKeyedOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.KeyedBroadcastOperatorTestHarness;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -371,6 +373,43 @@ class AdherenceProcessFunctionTest {
         assertThat(afterReversal.currentSupplyEndDate()).isNull();
         assertThat(afterReversal.activeTimerTimestamp()).isNull();
         assertThat(afterReversal.activeTimerStage()).isNull();
+    }
+
+    @Test
+    void timerRegistrationIsLoggedAtDebugWithClaimIdAndTimestamp() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        long expectedTimerTs = epochMillis(fillDate.plusDays(30).minusDays(5));
+
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processElement(
+                    fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                    epochMillis(fillDate));
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("Registered GAP_RISK timer")
+                            && line.contains("claimId=claim-1")
+                            && line.contains("timerTs=" + expectedTimerTs));
+        }
+    }
+
+    @Test
+    void missingLeadTimeLookupNamesTheKeyThatMissedAndTheFallback() throws Exception {
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+
+        // No broadcast entry at all — the fallback path, and the one a bad ref topic produces
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processElement(
+                    fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                    epochMillis(fillDate));
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("key=CHRONIC_CARDIAC|RETAIL")
+                            && line.contains("default of " + DEFAULT_LEAD_DAYS + " days"));
+        }
+        assertThat(function().missingLeadTimeCount()).isEqualTo(1L);
     }
 
     private long epochMillis(LocalDate date) {
