@@ -15,10 +15,6 @@ spec:
     state.savepoints.dir: gs://vigilancerx-502702-rx-vigilance-ckpt/rx-vigilance-savepoints
     metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
     metrics.reporter.prom.port: "9249"
-    # Routes java.util.logging (the GCS connector) through log4j so those lines
-    # are JSON too. Must be a JVM flag: JUL reads this property when its
-    # LogManager first initialises, which is too early for any config file.
-    env.java.opts.all: "-Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager"
 
     # #147: the cluster reads /opt/flink/conf/log4j-console.properties, NOT the
     # log4j2.properties inside the job jar. The operator writes this map into that
@@ -108,6 +104,22 @@ spec:
               - name: metrics
                 containerPort: 9249
             env:
+              # Routes java.util.logging (the GCS connector) through log4j so those
+              # lines are JSON too. JUL reads this property when its LogManager first
+              # initialises, too early for any config file — so it has to be a JVM flag.
+              #
+              # It must NOT go in flinkConfiguration.env.java.opts.all: that key REPLACES
+              # Flink's value rather than appending to it, and Flink 1.18's default value
+              # is the JDK-17 --add-exports/--add-opens list. Setting it to this property
+              # alone removed --add-opens=java.base/java.util=ALL-UNNAMED, so Kryo could
+              # no longer reflect into JDK collections and every operator-state restore
+              # failed — a 13-hour crash loop that printed perfect JSON logs while never
+              # running. JAVA_TOOL_OPTIONS is additive: the JVM applies it on top of the
+              # command line, so Flink's defaults survive, including across upgrades.
+              # The LogManager class is loadable because log4j-jul sits in /opt/flink/lib
+              # (system classpath) — see the Dockerfile.
+              - name: JAVA_TOOL_OPTIONS
+                value: "-Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager"
               - name: ENABLE_BUILT_IN_PLUGINS
                 value: flink-gs-fs-hadoop-1.18.1.jar
               - name: KAFKA_SASL_USERNAME
