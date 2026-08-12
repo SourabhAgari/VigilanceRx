@@ -10,6 +10,8 @@ import com.healthcare.rxvigilance.pipeline.source.AlertLeadTimeKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.DrugClassRefKafkaSource;
 import com.healthcare.rxvigilance.pipeline.source.RxFillEventSource;
 import com.healthcare.rxvigilance.serialization.deadletter.DeadLetterRecord;
+import com.healthcare.rxvigilance.serialization.util.KafkaCoordinates;
+import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
 import io.confluent.kafka.schemaregistry.avro.AvroSchema;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
@@ -32,7 +34,9 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.AfterAll;
@@ -310,6 +314,22 @@ class KafkaSourceSinkRoundTripIT {
 
     }
 
+    /**
+     * Writes bytes with no Avro framing — no magic byte, no schema id — so the source's
+     * deserializer must fail on it. Returns Kafka's own RecordMetadata, which is what the
+     * captured coordinates get compared against. #149.
+     */
+    private RecordMetadata produceRaw(String topic, byte[] value) throws Exception {
+        Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, RED_PANDA_CONTAINER.getBootstrapServers());
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
+
+        try (KafkaProducer<String, byte[]> producer = new KafkaProducer<>(props)) {
+            return producer.send(new ProducerRecord<>(topic, "poison-key", value)).get();
+        }
+    }
+
     public void produceDrugClassRef(String topic, String ndcCode, DrugClassRef drugClassRef) throws Exception {
         Schema schema;
         try (InputStream avsc = getClass().getResourceAsStream("/drug-class-ref.avsc")) {
@@ -376,7 +396,9 @@ class KafkaSourceSinkRoundTripIT {
         String topic = "dead-letter-" + UUID.randomUUID();
         byte[] rawBytes = "not-valid-avro".getBytes(StandardCharsets.UTF_8);
         String errorMessage = "Schema mismatch on decode";
-        DeadLetterRecord deadLetter = new DeadLetterRecord(rawBytes, errorMessage);
+        DeadLetterRecord deadLetter = new DeadLetterRecord(rawBytes,
+                errorMessage,
+                new KafkaCoordinates("rx-fill-events", 2, 884211L, 1_700_000_000_000L));
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
@@ -397,16 +419,64 @@ class KafkaSourceSinkRoundTripIT {
         assertThat(consumerRecord.value()).isEqualTo(rawBytes);
         assertThat(consumerRecord.headers().lastHeader("error-message").value())
                 .isEqualTo(errorMessage.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(consumerRecord.headers().lastHeader("source-topic").value())
+                .isEqualTo("rx-fill-events".getBytes(StandardCharsets.UTF_8));
+        assertThat(consumerRecord.headers().lastHeader("source-partition").value())
+                .isEqualTo("2".getBytes(StandardCharsets.UTF_8));
+        assertThat(consumerRecord.headers().lastHeader("source-offset").value())
+                .isEqualTo("884211".getBytes(StandardCharsets.UTF_8));
+        assertThat(consumerRecord.headers().lastHeader("source-timestamp").value())
+                .isEqualTo("1700000000000".getBytes(StandardCharsets.UTF_8));
     }
 
     /**
-     * With AUTO_REGISTER_SCHEMAS off (#109), the job looks a schema up rather than creating it.
-     * These tests use randomised topic names, so no external tool can pre-register the subject —
-     * the test must do it, exactly as Terraform does for the real topics.
-     *
-     * Deliberately duplicated from AdherencePipelineIT: each test class owns a separate
-     * RedpandaContainer, and the helper must resolve the registry address of *its own* container.
+     * The whole point of #149: produce a message that cannot be decoded, then prove the
+     * dead-letter record can be traced back to the exact byte on the broker. Everything
+     * else in this class hand-builds the DeadLetterRecord and so never exercises
+     * TypedAvroDeserialisationSchema, which is where the coordinates are captured.
+     * The point of #149: a message that cannot be decoded must be traceable back to the
+     * exact byte on the broker. Every other dead-letter test here hand-builds the
+     * DeadLetterRecord and so never exercises TypedAvroDeserialisationSchema, which is
+     * the only place the ConsumerRecord exists.
      */
+    @Test
+    void deadLetterCarriesTheSourceCoordinatesOfTheMessageThatFailed() throws Exception {
+        String topic = "rx-fill-events-" + UUID.randomUUID();
+        byte[] poison = "definitely-not-avro".getBytes(StandardCharsets.UTF_8);
+        RecordMetadata written = produceRaw(topic, poison);
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        KafkaConnectionConfig kafkaConfig = new KafkaConnectionConfig(
+                RED_PANDA_CONTAINER.getBootstrapServers(),
+                RED_PANDA_CONTAINER.getSchemaRegistryAddress(),
+                null, null, null, null);
+        WatermarkConfig watermarkConfig = new WatermarkConfig(Duration.ofHours(24), Duration.ofMinutes(5));
+        ParameterTool params = ParameterTool.fromMap(Map.of("kafka.topic.rx-fill-events", topic));
+
+        List<KafkaSourceResult<RxFillEvent>> deadLetters =
+                RxFillEventSource.build(env, kafkaConfig, watermarkConfig, params)
+                        .deadLetters()
+                        .executeAndCollect(1);
+
+        assertThat(deadLetters).hasSize(1);
+        KafkaCoordinates coordinates = deadLetters.get(0).coordinates();
+        assertThat(coordinates.topic()).isEqualTo(topic);
+        assertThat(coordinates.partition()).isEqualTo(written.partition());
+        assertThat(coordinates.offset()).isEqualTo(written.offset());
+        assertThat(coordinates.timestamp()).isEqualTo(written.timestamp());
+    }
+
+    /**
+         * With AUTO_REGISTER_SCHEMAS off (#109), the job looks a schema up rather than creating it.
+         * These tests use randomised topic names, so no external tool can pre-register the subject —
+         * the test must do it, exactly as Terraform does for the real topics.
+         *
+         * Deliberately duplicated from AdherencePipelineIT: each test class owns a separate
+         * RedpandaContainer, and the helper must resolve the registry address of *its own* container.
+         */
     private static void registerSubject(String topic, String avscResource) throws Exception {
         SchemaRegistryClient client = new CachedSchemaRegistryClient(
                 RED_PANDA_CONTAINER.getSchemaRegistryAddress(), 10);

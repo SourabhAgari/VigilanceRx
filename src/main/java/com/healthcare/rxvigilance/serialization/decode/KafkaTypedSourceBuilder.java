@@ -92,6 +92,7 @@ public final class KafkaTypedSourceBuilder<T> {
 
         env.getConfig().registerTypeWithKryoSerializer(valueType, RecordKryoSerializer.class);
         env.getConfig().registerTypeWithKryoSerializer(KafkaSourceResult.class, RecordKryoSerializer.class);
+        env.getConfig().addDefaultKryoSerializer(Record.class, RecordKryoSerializer.class);
         for (Class<?> type : additionalKryoTypes) {
             env.getConfig().registerTypeWithKryoSerializer(type, RecordKryoSerializer.class);
         }
