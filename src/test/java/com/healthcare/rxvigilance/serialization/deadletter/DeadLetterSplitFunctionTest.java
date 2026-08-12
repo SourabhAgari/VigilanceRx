@@ -1,11 +1,14 @@
 package com.healthcare.rxvigilance.serialization.deadletter;
 
+import com.healthcare.rxvigilance.logging.LogCapture;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
+import com.healthcare.rxvigilance.serialization.util.KafkaCoordinates;
 import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.ProcessFunctionTestHarnesses;
 import org.apache.flink.util.OutputTag;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,5 +43,27 @@ class DeadLetterSplitFunctionTest {
         assertThat(harness.getSideOutput(DEAD_LETTER_TAG))
                 .extracting(StreamRecord::getValue)
                 .containsExactly(failure);
+    }
+
+    @Test
+    void deadLetterIsLoggedAtWarnWithItsCoordinatesButNeverItsPayload() throws Exception {
+        OneInputStreamOperatorTestHarness<KafkaSourceResult<String>, String> harness =
+                ProcessFunctionTestHarnesses.forProcessFunction(new DeadLetterSplitFunction<>(DEAD_LETTER_TAG));
+        harness.getExecutionConfig().registerTypeWithKryoSerializer(KafkaSourceResult.class, RecordKryoSerializer.class);
+
+        KafkaSourceResult<String> failure = KafkaSourceResult.<String>failure(new byte[]{1, 2, 3}, "bad bytes")
+                .withCoordinates(new KafkaCoordinates("rx-fill-events", 2, 884211L, 1_700_000_000_000L));
+
+        try (LogCapture logs = new LogCapture(DeadLetterSplitFunction.class, Level.WARN)) {
+            harness.processElement(failure, 0L);
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("WARN")
+                            && line.contains("rx-fill-events")
+                            && line.contains("884211")
+                            && line.contains("bad bytes")
+                            && line.contains("rawBytesLength=3"))
+                    .noneMatch(line -> line.contains("[1, 2, 3]"));
+        }
     }
 }
