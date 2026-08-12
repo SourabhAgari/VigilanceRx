@@ -15,7 +15,7 @@ RUN mvn -B dependency:go-offline
 # takes the version from pom.xml, so ${log4j.version} stays the single source.
 
 RUN mvn -B dependency:copy-dependencies \
-    -DincludeArtifactIds=log4j-layout-template-json \
+    -DincludeArtifactIds=log4j-layout-template-json,log4j-jul \
     -DoutputDirectory=/build/flinklib
 
 COPY src ./src
@@ -41,6 +41,9 @@ ENV RXV_IMAGE_TAG=${GIT_SHA}
 
 COPY --chown=flink:flink --from=builder /build/rx-vigilance.jar /opt/flink/usrlib/rx-vigilance.jar
 
-# #147: loadable by Flink's framework classloader, unlike anything in usrlib.
-COPY --chown=flink:flink --from=builder /build/flinklib/log4j-layout-template-json-*.jar /opt/flink/lib/
+# #147: both log4j add-ons must sit in /opt/flink/lib — Flink initialises
+# logging with its framework classloader before user code runs and never scans
+# usrlib. Copying the whole directory rather than named globs, so adding another
+# artifact to copy-dependencies above needs no change here.
+COPY --chown=flink:flink --from=builder /build/flinklib/ /opt/flink/lib/
 COPY --chown=flink:flink --from=builder /build/src/main/resources/log4j2-gcp-layout.json /opt/flink/usrlib/
