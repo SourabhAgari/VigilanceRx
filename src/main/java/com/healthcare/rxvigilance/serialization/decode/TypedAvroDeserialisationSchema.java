@@ -1,5 +1,6 @@
 package com.healthcare.rxvigilance.serialization.decode;
 
+import com.healthcare.rxvigilance.serialization.util.KafkaCoordinates;
 import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
 import com.healthcare.rxvigilance.serialization.codec.AvroRecordDecoder;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
@@ -41,7 +42,10 @@ public final class TypedAvroDeserialisationSchema<T>
     @Override
     public void deserialize(ConsumerRecord<byte[], byte[]> consumerRecord, Collector<KafkaSourceResult<T>> collector) throws IOException {
         String key = consumerRecord.key() == null ? null : new String(consumerRecord.key());
-        collector.collect(deserializer.deserialize(key, consumerRecord.value()));
+        // The last point where the broker position is available. Attached to every
+        // result, not just failures: #148's per-record DEBUG logs want it too. #149.
+        collector.collect(deserializer.deserialize(key, consumerRecord.value())
+                .withCoordinates(KafkaCoordinates.from(consumerRecord)));
     }
 
     @Override

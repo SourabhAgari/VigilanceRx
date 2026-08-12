@@ -3,17 +3,27 @@ package com.healthcare.rxvigilance.serialization.util;
 import java.util.Arrays;
 import java.util.Objects;
 
-public record KafkaSourceResult<T>(T value, byte[] rawBytes, String errorMessage) {
+public record KafkaSourceResult<T>(T value, byte[] rawBytes, String errorMessage, KafkaCoordinates coordinates) {
     public boolean isSuccess() {
         return value != null;
     }
 
     public static <T> KafkaSourceResult<T> success(T value) {
-        return new KafkaSourceResult<>(value, null, null);
+        return new KafkaSourceResult<>(value,
+                null, null,null);
     }
 
     public static <T> KafkaSourceResult<T> failure(byte[] rawBytes, String errorMessage) {
-        return new KafkaSourceResult<>(null, rawBytes, errorMessage);
+        return new KafkaSourceResult<>(null, rawBytes, errorMessage,null);
+    }
+
+    /**
+     * Attached by TypedAvroDeserialisationSchema, which holds the ConsumerRecord. Kept
+     * out of the factories on purpose: AvroKeyValueDeSerializer decodes bytes and should
+     * not know where on the broker they came from. #149.
+     */
+    public KafkaSourceResult<T> withCoordinates(KafkaCoordinates coordinates) {
+        return new KafkaSourceResult<>(value, rawBytes, errorMessage, coordinates);
     }
 
     @Override
@@ -40,6 +50,7 @@ public record KafkaSourceResult<T>(T value, byte[] rawBytes, String errorMessage
     public String toString() {
         return "KafkaSourceResult[value=" + value
                 + ", rawBytes=" + Arrays.toString(rawBytes)
-                + ", errorMessage=" + errorMessage + "]";
+                + ", errorMessage=" + errorMessage
+                + ", coordinates=" + coordinates + "]";
     }
 }

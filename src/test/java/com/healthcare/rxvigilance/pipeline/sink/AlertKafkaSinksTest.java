@@ -5,6 +5,7 @@ import com.healthcare.rxvigilance.domain.GapRiskAlert;
 import com.healthcare.rxvigilance.domain.LapsedAlert;
 import com.healthcare.rxvigilance.domain.PdcSnapshot;
 import com.healthcare.rxvigilance.serialization.deadletter.DeadLetterRecord;
+import com.healthcare.rxvigilance.serialization.util.KafkaCoordinates;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
@@ -55,11 +56,13 @@ class AlertKafkaSinksTest {
     }
 
     @Test
-    void deadLetterRecordSerializerWritesRawBytesAsValueAndErrorMessageAsHeader() {
+    void deadLetterRecordSerializerWritesRawBytesAsValueAndErrorMessageAsHeaderAndSourceCoordinatesAsHeaders() {
         KafkaRecordSerializationSchema<DeadLetterRecord> schema =
                 AlertKafkaSinks.deadLetterRecordSerializer("dead-letter");
 
-        DeadLetterRecord deadLetterRecord = new DeadLetterRecord(new byte[]{1, 2, 3}, "bad magic byte");
+        DeadLetterRecord deadLetterRecord = new DeadLetterRecord(new byte[]{1, 2, 3},
+                "bad magic byte",
+                new KafkaCoordinates("rx-fill-events", 2, 884211L, 1_700_000_000_000L));
 
         ProducerRecord<byte[], byte[]> producerRecord = schema.serialize(deadLetterRecord, new NoOpSinkContext(), null);
 
@@ -67,6 +70,12 @@ class AlertKafkaSinksTest {
         assertThat(producerRecord.value()).isEqualTo(new byte[]{1, 2, 3});
         assertThat(producerRecord.headers().lastHeader("error-message").value())
                 .isEqualTo("bad magic byte".getBytes(StandardCharsets.UTF_8));
+        assertThat(producerRecord.headers().lastHeader("source-topic").value())
+                .isEqualTo("rx-fill-events".getBytes(StandardCharsets.UTF_8));
+        assertThat(producerRecord.headers().lastHeader("source-partition").value())
+                .isEqualTo("2".getBytes(StandardCharsets.UTF_8));
+        assertThat(producerRecord.headers().lastHeader("source-offset").value())
+                .isEqualTo("884211".getBytes(StandardCharsets.UTF_8));
     }
 
     private static final class NoOpSinkContext implements KafkaRecordSerializationSchema.KafkaSinkContext {
@@ -84,5 +93,20 @@ class AlertKafkaSinksTest {
         public int[] getPartitionsForTopic(String topic) {
             return new int[0];
         }
+    }
+
+    @Test
+    void deadLetterRecordSerializerOmitsCoordinateHeadersWhenAbsent() {
+        KafkaRecordSerializationSchema<DeadLetterRecord> schema =
+                AlertKafkaSinks.deadLetterRecordSerializer("dead-letter");
+
+        DeadLetterRecord noCoordinates =
+                new DeadLetterRecord(new byte[]{1, 2, 3}, "bad magic byte", null);
+
+        ProducerRecord<byte[], byte[]> producerRecord =
+                schema.serialize(noCoordinates, new NoOpSinkContext(), null);
+
+        assertThat(producerRecord.headers().lastHeader("error-message")).isNotNull();
+        assertThat(producerRecord.headers().lastHeader("source-topic")).isNull();
     }
 }
