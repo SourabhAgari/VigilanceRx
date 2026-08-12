@@ -412,6 +412,36 @@ class AdherenceProcessFunctionTest {
         assertThat(function().missingLeadTimeCount()).isEqualTo(1L);
     }
 
+    @Test
+    void lapsedAlertEmissionIsLoggedWithTheAlertIdThatReachesKafka() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+
+        // First advance fires GAP_RISK and re-arms the timer at the supply end date;
+        // the second advance is the one that reaches the LAPSED stage.
+        harness.processWatermark(function().currentadherenceState().activeTimerTimestamp());
+        long lapsedTimerTs = function().currentadherenceState().activeTimerTimestamp();
+
+        try (LogCapture logs = new LogCapture(AdherenceProcessFunction.class, Level.DEBUG)) {
+            harness.processWatermark(lapsedTimerTs);
+
+            List<LapsedAlert> alerts = harness.getSideOutput(AdherenceProcessFunction.LAPSED_ALERT_TAG)
+                    .stream().map(StreamRecord::getValue).toList();
+            assertThat(alerts).hasSize(1);
+            String alertId = alerts.get(0).alertId();
+
+            assertThat(logs.lines())
+                    .anyMatch(line -> line.startsWith("DEBUG")
+                            && line.contains("LapsedAlert emitted")
+                            && line.contains("alertId=" + alertId));
+        }
+        assertThat(function().currentadherenceState().activeTimerTimestamp()).isNull();
+        assertThat(function().lapsedAlertsEmittedCount()).isEqualTo(1L);
+    }
+
     private long epochMillis(LocalDate date) {
         return date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
     }
