@@ -43,4 +43,4 @@ COPY --chown=flink:flink --from=builder /build/rx-vigilance.jar /opt/flink/usrli
 
 # #147: loadable by Flink's framework classloader, unlike anything in usrlib.
 COPY --chown=flink:flink --from=builder /build/flinklib/log4j-layout-template-json-*.jar /opt/flink/lib/
-COPY --chown=flink:flink --from=builder /build/src/main/resources/log4j2-gcp-layout.json /opt/flink/conf/
+COPY --chown=flink:flink --from=builder /build/src/main/resources/log4j2-gcp-layout.json /opt/flink/usrlib/
