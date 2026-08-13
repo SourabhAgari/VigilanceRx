@@ -99,13 +99,11 @@ public class AdherenceProcessFunction extends
                     null, 0, List.of(), 0, null, null);
         }
 
-        AdherenceState merged = IntervalMerger.merge(currentState, enrichedFillEvent.event());
-        if (merged == currentState) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Fill event changed no coverage, ignoring: claimId={} drugClass={} "
-                                + "reason=duplicate-or-fully-covered",
-                        enrichedFillEvent.event().claimId(), enrichedFillEvent.drugClass());
-            }
+        IntervalMerger.MergeResult mergeResult = IntervalMerger.merge(currentState, enrichedFillEvent.event());
+        AdherenceState merged = mergeResult.state();
+        if (mergeResult.outcome() == IntervalMerger.MergeOutcome.DUPLICATE_CLAIM) {
+            LOG.warn("Duplicate claimId already merged, ignoring: claimId={} drugClass={}",
+                    enrichedFillEvent.event().claimId(), enrichedFillEvent.drugClass());
             return;
         }
 
@@ -137,6 +135,7 @@ public class AdherenceProcessFunction extends
                     timerTimestamp, Instant.ofEpochMilli(timerTimestamp), currentState.activeTimerTimestamp());
         }
 
+
         AdherenceState finalState = new AdherenceState(
                 merged.currentSupplyEndDate(), merged.lastFillDate(), merged.totalDaysCovered(),
                 merged.activeCoverageIntervals(), alertLeadDays, timerTimestamp, TimerStage.GAP_RISK
@@ -158,9 +157,12 @@ public class AdherenceProcessFunction extends
             return;
         }
         RxFillEvent reversal = event.event();
-        AdherenceState unwound = IntervalMerger.unwind(currentState, reversal.originalClaimId());
+        IntervalMerger.UnwindResult unwoundResult = IntervalMerger.unwind(currentState, reversal.originalClaimId());
+        AdherenceState unwound = unwoundResult.state();
 
-        if (unwound == currentState) {
+        if (unwoundResult.outcome() == IntervalMerger.UnwindOutcome.NO_MATCHING_INTERVAL) {
+            LOG.warn("Reversal matched no interval, ignoring: claimId={} originalClaimId={} drugClass={}",
+                    reversal.claimId(), reversal.originalClaimId(), event.drugClass());
             return;
         }
 
