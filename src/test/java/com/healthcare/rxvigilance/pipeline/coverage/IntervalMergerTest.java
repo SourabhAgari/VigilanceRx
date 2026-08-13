@@ -31,9 +31,9 @@ class IntervalMergerTest {
 
     @Test
     void nonOverlappingFillsAppendsClearly() {
-        AdherenceState afterFirst = IntervalMerger.merge(emptyState(),
+        AdherenceState afterFirst = merged(emptyState(),
                 fillEvent("CLM1-1", LocalDate.of(2026, Month.JANUARY, 1), 30));
-        AdherenceState afterSecond = IntervalMerger.merge(afterFirst,
+        AdherenceState afterSecond = merged(afterFirst,
                 fillEvent("CLM-2", LocalDate.of(2026, Month.FEBRUARY, 15), 30));
 
         assertThat(afterSecond.currentSupplyEndDate()).isEqualTo(LocalDate.of(2026, Month.MARCH, 17));
@@ -43,9 +43,9 @@ class IntervalMergerTest {
 
     @Test
     void earlyRefillOnlyNonOverlappingDaysCount() {
-        AdherenceState afterFirst = IntervalMerger.merge(emptyState(),
+        AdherenceState afterFirst = merged(emptyState(),
                 fillEvent("CLM-1", LocalDate.of(2026, Month.JANUARY, 1), 30));
-        AdherenceState afterEarlyRefill = IntervalMerger.merge(afterFirst,
+        AdherenceState afterEarlyRefill = merged(afterFirst,
                 fillEvent("CLM-2", LocalDate.of(2026, Month.JANUARY, 25), 30));
 
         assertThat(afterEarlyRefill.currentSupplyEndDate()).isEqualTo(LocalDate.of(2026, Month.FEBRUARY, 24));
@@ -54,10 +54,10 @@ class IntervalMergerTest {
 
     @Test
     void fillFullyInsideExistingCoverageAddsZeroDays() {
-        AdherenceState afterFirst = IntervalMerger.merge(emptyState(),
+        AdherenceState afterFirst = merged(emptyState(),
                 fillEvent("CLM-1", LocalDate.of(2026, Month.JANUARY, 1), 60));
 
-        AdherenceState afterInsideFill = IntervalMerger.merge(afterFirst,
+        AdherenceState afterInsideFill = merged(afterFirst,
                 fillEvent("CLM-2", LocalDate.of(2026, Month.JANUARY, 10), 10));
 
         assertThat(afterInsideFill.currentSupplyEndDate()).isEqualTo(LocalDate.of(2026, Month.MARCH, 2));
@@ -72,7 +72,7 @@ class IntervalMergerTest {
                 List.of(new CoverageInterval("LATER-1", LocalDate.of(2026, Month.FEBRUARY, 1), LocalDate.of(2026, Month.MARCH, 3))),
                 5, null,null);
 
-        AdherenceState afterOlderFill = IntervalMerger.merge(state,
+        AdherenceState afterOlderFill = merged(state,
                 fillEvent("OLDER-1", LocalDate.of(2026, Month.JANUARY, 1), 15));
 
         assertThat(afterOlderFill.currentSupplyEndDate()).isEqualTo(LocalDate.of(2026, Month.MARCH, 3));
@@ -83,12 +83,12 @@ class IntervalMergerTest {
 
     @Test
     void reversalOfLatestFillShrinksEndDate() {
-        AdherenceState afterFirst = IntervalMerger.merge(emptyState(),
+        AdherenceState afterFirst = merged(emptyState(),
                 fillEvent("CLM-1", LocalDate.of(2026, Month.JANUARY, 1), 30));
-        AdherenceState afterSecond = IntervalMerger.merge(afterFirst,
+        AdherenceState afterSecond = merged(afterFirst,
                 fillEvent("CLM-2", LocalDate.of(2026, Month.FEBRUARY, 15), 30));
 
-        AdherenceState afterReversal = IntervalMerger.unwind(afterSecond, "CLM-2");
+        AdherenceState afterReversal = unwound(afterSecond, "CLM-2");
         assertThat(afterReversal.currentSupplyEndDate()).isEqualTo(LocalDate.of(2026, Month.JANUARY, 31));
         assertThat(afterReversal.totalDaysCovered()).isEqualTo(30);
         assertThat(afterReversal.activeCoverageIntervals()).hasSize(1);
@@ -96,14 +96,14 @@ class IntervalMergerTest {
 
     @Test
     void reversalOfMiddleIntervalRecomputesCorrectly() {
-        AdherenceState state = IntervalMerger.merge(emptyState(),
+        AdherenceState state = merged(emptyState(),
                 fillEvent("CLM-1", LocalDate.of(2026, Month.JANUARY, 1), 30));
-        state = IntervalMerger.merge(state,
+        state = merged(state,
                 fillEvent("CLM-2", LocalDate.of(2026, Month.FEBRUARY, 15), 30));
-        state = IntervalMerger.merge(state,
+        state = merged(state,
                 fillEvent("CLM-3", LocalDate.of(2026, Month.APRIL, 1), 30));
 
-        AdherenceState afterReversal = IntervalMerger.unwind(state, "CLM-2");
+        AdherenceState afterReversal = unwound(state, "CLM-2");
 
         assertThat(afterReversal.currentSupplyEndDate()).isEqualTo(LocalDate.of(2026, Month.MAY, 1));
         assertThat(afterReversal.totalDaysCovered()).isEqualTo(60);
@@ -112,20 +112,21 @@ class IntervalMergerTest {
 
     @Test
     void reversalOfUnknownClaimIdIsSafeNoOp() {
-        AdherenceState state = IntervalMerger.merge(emptyState(),
+        AdherenceState state = merged(emptyState(),
                 fillEvent("CLM-1", LocalDate.of(2026, Month.JANUARY, 1), 30));
 
-        AdherenceState afterReversal = IntervalMerger.unwind(state, "NEVER-EXISTED");
+        IntervalMerger.UnwindResult result = IntervalMerger.unwind(state, "NEVER-EXISTED");
 
-        assertThat(afterReversal).isSameAs(state);
+        assertThat(result.outcome()).isEqualTo(IntervalMerger.UnwindOutcome.NO_MATCHING_INTERVAL);
+        assertThat(result.state()).isEqualTo(state);
     }
 
     @Test
     void reversalLeavingZeroCoverageReturnsEmptyStateSignal() {
-        AdherenceState state = IntervalMerger.merge(emptyState(),
+        AdherenceState state = merged(emptyState(),
                 fillEvent("CLM-1", LocalDate.of(2026, Month.JANUARY, 1), 30));
 
-        AdherenceState afterReversal = IntervalMerger.unwind(state, "CLM-1");
+        AdherenceState afterReversal = unwound(state, "CLM-1");
 
         assertThat(afterReversal.currentSupplyEndDate()).isNull();
         assertThat(afterReversal.totalDaysCovered()).isZero();
@@ -134,14 +135,26 @@ class IntervalMergerTest {
 
     @Test
     void duplicateClaimIdFillIsIdempotentNoOp() {
-        AdherenceState state = IntervalMerger.merge(emptyState(),
+        AdherenceState state = merged(emptyState(),
                 fillEvent("CLM-1", LocalDate.of(2026, Month.JANUARY, 1), 30));
 
-        AdherenceState afterDuplicate = IntervalMerger.merge(state,
+        IntervalMerger.MergeResult result = IntervalMerger.merge(state,
                 fillEvent("CLM-1", LocalDate.of(2026, Month.JANUARY, 1), 30));
 
-        assertThat(afterDuplicate).isSameAs(state);
+        assertThat(result.outcome()).isEqualTo(IntervalMerger.MergeOutcome.DUPLICATE_CLAIM);
+        assertThat(result.state()).isEqualTo(state);
     }
 
+    private static AdherenceState merged(AdherenceState state, RxFillEvent fill) {
+        IntervalMerger.MergeResult result = IntervalMerger.merge(state, fill);
+        assertThat(result.outcome()).isEqualTo(IntervalMerger.MergeOutcome.APPLIED);
+        return result.state();
+    }
+
+    private static AdherenceState unwound(AdherenceState state, String originalClaimId) {
+        IntervalMerger.UnwindResult result = IntervalMerger.unwind(state, originalClaimId);
+        assertThat(result.outcome()).isEqualTo(IntervalMerger.UnwindOutcome.APPLIED);
+        return result.state();
+    }
 
 }
