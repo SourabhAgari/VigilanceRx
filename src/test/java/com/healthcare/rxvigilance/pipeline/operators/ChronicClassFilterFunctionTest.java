@@ -8,13 +8,9 @@ import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
 import com.healthcare.rxvigilance.logging.LogCapture;
 import com.healthcare.rxvigilance.metrics.AdherenceMetricsReporter;
-import com.healthcare.rxvigilance.serialization.deadletter.DeadLetterSplitFunction;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
-import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
-import org.apache.flink.streaming.api.operators.ProcessOperator;
 import org.apache.flink.streaming.api.operators.co.CoBroadcastWithNonKeyedOperator;
 import org.apache.flink.streaming.util.BroadcastOperatorTestHarness;
-import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -201,6 +197,4 @@ class ChronicClassFilterFunctionTest {
         return (ChronicClassFilterFunction) ((CoBroadcastWithNonKeyedOperator<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent>)
                 harness.getOperator()).getUserFunction();
     }
-
-
 }

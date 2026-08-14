@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class AdherenceProcessFunction extends
         KeyedBroadcastProcessFunction<Tuple2<String, String>, EnrichedFillEvent, AlertLeadTimeUpdate, Void> {
@@ -37,7 +38,7 @@ public class AdherenceProcessFunction extends
     // the broadcastEntriesLoaded gauge — volatile because the metric reporter thread reads
     // it while the task thread writes it.
     private static final long BROADCAST_LOG_EVERY = 500L;
-    private transient volatile long leadTimeEntriesApplied;
+    private transient AtomicLong leadTimeEntriesApplied;
 
     public static final OutputTag<GapRiskAlert> GAP_RISK_ALERT_TAG =
             new OutputTag<>("gap-risk-alert") {
@@ -90,8 +91,8 @@ public class AdherenceProcessFunction extends
         timersFiredCounter = metrics.timersFired();
         pdcSnapshotsEmittedCounter = metrics.pdcSnapshotsEmitted();
 
-        leadTimeEntriesApplied = 0L;
-        metrics.broadcastEntriesLoaded(() -> leadTimeEntriesApplied);
+        leadTimeEntriesApplied = new AtomicLong();
+        metrics.broadcastEntriesLoaded(leadTimeEntriesApplied::get);
     }
 
     @Override
@@ -237,9 +238,9 @@ public class AdherenceProcessFunction extends
                                         Collector<Void> collector) throws Exception {
         ctx.getBroadcastState(LEAD_TIME_DESCRIPTOR).put(alertLeadTimeUpdate.drugClassAndChannel(), alertLeadTimeUpdate.alertLeadDays());
 
-        leadTimeEntriesApplied++;
-        if (leadTimeEntriesApplied == 1L || leadTimeEntriesApplied % BROADCAST_LOG_EVERY == 0L) {
-            LOG.info("Alert lead time broadcast applied {} entries on this subtask", leadTimeEntriesApplied);
+        long applied = leadTimeEntriesApplied.incrementAndGet();
+        if (applied == 1L || applied % BROADCAST_LOG_EVERY == 0L) {
+            LOG.info("Alert lead time broadcast applied {} entries on this subtask", applied);
         }
     }
 

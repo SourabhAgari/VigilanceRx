@@ -51,7 +51,7 @@ public class AdherenceMetricsReporter {
     }
 
     private Counter counter(String name) {
-        return counters.computeIfAbsent(name, metricName -> group.counter(metricName));
+        return counters.computeIfAbsent(name, group::counter);
     }
 
     public Counter chronicFilterDropped() {
