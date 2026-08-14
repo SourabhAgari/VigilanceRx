@@ -1,8 +1,10 @@
 package com.healthcare.rxvigilance.serialization.deadletter;
 
+import com.healthcare.rxvigilance.metrics.AdherenceMetricsReporter;
 import com.healthcare.rxvigilance.serialization.util.KafkaCoordinates;
 import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.Counter;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
@@ -21,8 +23,11 @@ public class DeadLetterSplitFunction<T> extends ProcessFunction<KafkaSourceResul
 
     private final OutputTag<KafkaSourceResult<T>> deadLetterTag;
 
-    // Per subtask, reset on restart: a log counter, not a metric. #150 adds deadLetterRecords.
-    private transient long deadLetters;
+    // Serves two jobs: the sampling decision below and the deadLetterRecords metric. Per subtask
+    // and reset on restart, which is true of a Flink Counter for the same reason — open() runs
+    // fresh on every restart.
+    private transient AdherenceMetricsReporter metrics;
+    private transient Counter deadLetterRecords;
 
     public DeadLetterSplitFunction(OutputTag<KafkaSourceResult<T>> deadLetterTag) {
         this.deadLetterTag = deadLetterTag;
@@ -30,7 +35,8 @@ public class DeadLetterSplitFunction<T> extends ProcessFunction<KafkaSourceResul
 
     @Override
     public void open(Configuration parameters) {
-        deadLetters = 0L;
+        metrics = AdherenceMetricsReporter.register(getRuntimeContext());
+        deadLetterRecords = metrics.deadLetterRecords();
     }
 
     @Override
@@ -39,9 +45,10 @@ public class DeadLetterSplitFunction<T> extends ProcessFunction<KafkaSourceResul
         if (tKafkaSourceResult.isSuccess()) {
             collector.collect(tKafkaSourceResult.value());
             return;
-        } deadLetters++;
-        if (deadLetters == 1L || deadLetters % WARN_EVERY == 0L) {
-            logDeadLetter(tKafkaSourceResult);
+        } deadLetterRecords.inc();
+        long count = deadLetterRecords.getCount();
+        if (count == 1L || count % WARN_EVERY == 0L) {
+            logDeadLetter(tKafkaSourceResult, count);
         }
         context.output(deadLetterTag, tKafkaSourceResult);
     }
@@ -51,7 +58,7 @@ public class DeadLetterSplitFunction<T> extends ProcessFunction<KafkaSourceResul
      * (Sonar S2629). rawBytes is PHI under §9 — the length distinguishes a truncated
      * message from an empty one, and the coordinates say where to read the real thing.
      */
-    private void logDeadLetter(KafkaSourceResult<T> result) {
+    private void logDeadLetter(KafkaSourceResult<T> result, long count) {
         KafkaCoordinates coordinates = result.coordinates();
         String errorMessage = result.errorMessage();
         byte[] rawBytes = result.rawBytes();
@@ -60,6 +67,10 @@ public class DeadLetterSplitFunction<T> extends ProcessFunction<KafkaSourceResul
         LOG.warn("Dead letter {} on this subtask: coordinates={} rawBytesLength={} error={}. "
                         + "The message and these coordinates are on the dead-letter topic; "
                         + "read the payload from there, not from this log.",
-                deadLetters, coordinates, rawBytesLength, errorMessage);
+                count, coordinates, rawBytesLength, errorMessage);
+    }
+
+    AdherenceMetricsReporter metrics() {
+        return metrics;
     }
 }

@@ -16,6 +16,19 @@ spec:
     metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
     metrics.reporter.prom.port: "9249"
 
+    # #150: RocksDB native metrics. Off by default because each is a property read per
+    # reporting interval — these three are cheap estimates, not full statistics, and
+    # state.backend.rocksdb.metrics.statistics is deliberately NOT enabled (it is the
+    # expensive one). estimate-num-keys replaces the activeKeys gauge that was dropped:
+    # Flink has no API to count keys in keyed state, and RocksDB does, including the
+    # decrease when TTL expires them.
+    state.backend.rocksdb.metrics.estimate-num-keys: "true"
+    state.backend.rocksdb.metrics.estimate-live-data-size: "true"
+    state.backend.rocksdb.metrics.estimate-pending-compaction-bytes: "true"
+    # Not a metric: moves the column family from the metric NAME into a label, so one
+    # query covers every state instead of one query per state. #151 depends on it.
+    state.backend.rocksdb.metrics.column-family-as-variable: "true"
+
     # #147: the cluster reads /opt/flink/conf/log4j-console.properties, NOT the
     # log4j2.properties inside the job jar. The operator writes this map into that
     # file. Must be a SIBLING of flinkConfiguration — nested inside it, the

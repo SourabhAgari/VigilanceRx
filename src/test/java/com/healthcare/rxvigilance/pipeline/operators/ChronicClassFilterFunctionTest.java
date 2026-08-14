@@ -7,9 +7,14 @@ import com.healthcare.rxvigilance.domain.RxFillEvent;
 import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
 import com.healthcare.rxvigilance.logging.LogCapture;
+import com.healthcare.rxvigilance.metrics.AdherenceMetricsReporter;
+import com.healthcare.rxvigilance.serialization.deadletter.DeadLetterSplitFunction;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
+import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
+import org.apache.flink.streaming.api.operators.ProcessOperator;
 import org.apache.flink.streaming.api.operators.co.CoBroadcastWithNonKeyedOperator;
 import org.apache.flink.streaming.util.BroadcastOperatorTestHarness;
+import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -170,6 +175,20 @@ class ChronicClassFilterFunctionTest {
         assertThat(harness.extractOutputValues()).hasSize(2);
     }
 
+    @Test
+    void broadcastEntriesLoadedGaugeTracksWhatTheBroadcastApplied() throws Exception {
+        // An empty broadcast is the silent failure this gauge exists to expose: every fill gets
+        // buffered forever, no counter moves, and the job looks healthy while emitting nothing.
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BROADCAST_ENTRIES_LOADED)).isZero();
+
+        harness.processBroadcastElement(new DrugClassRefUpdate("NDC-CHRONIC",
+                new DrugClassRef("CHRONIC_CARDIAC", true)), 0L);
+        harness.processBroadcastElement(new DrugClassRefUpdate("NDC-DIABETES",
+                new DrugClassRef("DIABETES", true)), 1L);
+
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BROADCAST_ENTRIES_LOADED)).isEqualTo(2L);
+    }
+
     private RxFillEvent fillEvent(String ndcCode, int refillsAuthorized) {
         return new RxFillEvent(
                 EventType.FILL, "claim-1", "member-1", ndcCode,
@@ -182,4 +201,6 @@ class ChronicClassFilterFunctionTest {
         return (ChronicClassFilterFunction) ((CoBroadcastWithNonKeyedOperator<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent>)
                 harness.getOperator()).getUserFunction();
     }
+
+
 }

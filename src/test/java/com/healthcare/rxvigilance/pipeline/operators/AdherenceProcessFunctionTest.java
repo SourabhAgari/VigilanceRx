@@ -6,6 +6,7 @@ import com.healthcare.rxvigilance.domain.enums.Channel;
 import com.healthcare.rxvigilance.domain.enums.EventType;
 import com.healthcare.rxvigilance.domain.enums.TimerStage;
 import com.healthcare.rxvigilance.logging.LogCapture;
+import com.healthcare.rxvigilance.metrics.AdherenceMetricsReporter;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -75,6 +76,7 @@ class AdherenceProcessFunctionTest {
         EnrichedFillEvent event = fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, daySupply, Channel.RETAIL);
         harness.processElement(event, epochMillis(fillDate));
 
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_REGISTERED)).isEqualTo(1L);
         assertThat(harness.numEventTimeTimers()).isEqualTo(1);
         LocalDate expectedEndDate = fillDate.plusDays(daySupply);
         long expectedTimerTimestamp = epochMillis(expectedEndDate.minusDays(5));
@@ -97,6 +99,8 @@ class AdherenceProcessFunctionTest {
         AdherenceState afterFiring = function().currentadherenceState();
         assertThat(afterFiring.activeTimerStage()).isEqualTo(TimerStage.LAPSED);
         assertThat(afterFiring.activeTimerTimestamp()).isEqualTo(epochMillis(expectedEndDate));
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_FIRED)).isEqualTo(1L);
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_REGISTERED)).isEqualTo(2L);
     }
 
     @Test
@@ -115,6 +119,11 @@ class AdherenceProcessFunctionTest {
                 fillEvent("claim-2", "member-1", "CHRONIC_CARDIAC", secondFillDate, 30, Channel.RETAIL),
                 epochMillis(secondFillDate)
         );
+
+        // numEventTimeTimers is 1 because the first was deleted; the counter is 2 because it
+        // counts registrations over time, not live timers. Different questions, different answers.
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_REGISTERED)).isEqualTo(2L);
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_FIRED)).isZero();
 
         assertThat(harness.numEventTimeTimers()).isEqualTo(1);
         long secondTimerTimestamp = function().currentadherenceState().activeTimerTimestamp();
@@ -156,6 +165,7 @@ class AdherenceProcessFunctionTest {
 
         assertThat(snapshots).containsExactly(new PdcSnapshot(
                 "member-1", "CHRONIC_CARDIAC", 30, fillDate.plusDays(30), epochMillis(fillDate)));
+        assertThat(function().metrics().count(AdherenceMetricsReporter.PDC_SNAPSHOTS_EMITTED)).isEqualTo(1L);
 
     }
 
@@ -202,6 +212,9 @@ class AdherenceProcessFunctionTest {
                 .stream().map(StreamRecord::getValue).toList();
         List<LapsedAlert> lapsedAlerts = harness.getSideOutput(AdherenceProcessFunction.LAPSED_ALERT_TAG)
                 .stream().map(StreamRecord::getValue).toList();
+
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_FIRED)).isEqualTo(2L);
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_REGISTERED)).isEqualTo(2L);
 
         assertThat(gapRiskAlerts).hasSize(1);
         assertThat(gapRiskAlerts.get(0).memberId()).isEqualTo("member-1");
@@ -257,6 +270,11 @@ class AdherenceProcessFunctionTest {
         assertThat(harness.getSideOutput(AdherenceProcessFunction.GAP_RISK_ALERT_TAG)).isNullOrEmpty();
         assertThat(harness.numEventTimeTimers()).isZero(); // fired (Flink removes it regardless) but no-op, nothing cascaded
         assertThat(function().gapRiskAlertsEmittedCount()).isZero();
+
+        // Counted even though it did nothing. If this only counted useful firings, "every timer
+        // is stale" and "the watermark is frozen" would both read as timersFired == 0.
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_FIRED)).isEqualTo(1L);
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_REGISTERED)).isEqualTo(1L);
     }
 
     @Test
@@ -293,6 +311,11 @@ class AdherenceProcessFunctionTest {
         assertThat(afterReversal.activeTimerTimestamp()).isNotEqualTo(extendedTimerTimestamp);
 
         assertThat(harness.numEventTimeTimers()).isEqualTo(1); // old timer deleted, exactly one new one registered
+
+        // three registrations so far (two fills, one re-arm) against one live timer, and the
+        // reversal matched a real interval — so nothing reached the unmatched-reversal path
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_REGISTERED)).isEqualTo(3L);
+        assertThat(function().metrics().count(AdherenceMetricsReporter.REVERSAL_WITHOUT_ORIGINAL)).isZero();
 
         // firing the superseding timer produces an alert reflecting the shrunk end date, not the old one
         harness.processWatermark(supersedingTimerTimestamp);
@@ -481,6 +504,55 @@ class AdherenceProcessFunctionTest {
 
             assertThat(logs.lines()).anyMatch(line -> line.contains("reason=no-active-timer"));
         }
+    }
+
+    @Test
+    void duplicateClaimIdIsDroppedAndCounted() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        EnrichedFillEvent fill =
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL);
+
+        harness.processElement(fill, epochMillis(fillDate));
+        long timerAfterFirstFill = function().currentadherenceState().activeTimerTimestamp();
+
+        // the same claim arrives again — an upstream retry, not a real refill
+        harness.processElement(fill, epochMillis(fillDate));
+
+        assertThat(function().metrics().count(AdherenceMetricsReporter.DUPLICATE_CLAIM_ID_DROPPED)).isEqualTo(1L);
+
+        // the real assertion: the duplicate changed nothing. A second registration here would
+        // break §4's "at most one timer per key" and inflate coverage with a phantom interval.
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_REGISTERED)).isEqualTo(1L);
+        assertThat(harness.numEventTimeTimers()).isEqualTo(1);
+        AdherenceState state = function().currentadherenceState();
+        assertThat(state.activeTimerTimestamp()).isEqualTo(timerAfterFirstFill);
+        assertThat(state.activeCoverageIntervals()).hasSize(1);
+    }
+
+    @Test
+    void reversalWithNoMatchingIntervalIsCountedAndLeavesStateAlone() throws Exception {
+        harness.processBroadcastElement(new AlertLeadTimeUpdate("CHRONIC_CARDIAC|RETAIL", 5), 0L);
+
+        LocalDate fillDate = LocalDate.of(2026, Month.MARCH, 1);
+        harness.processElement(
+                fillEvent("claim-1", "member-1", "CHRONIC_CARDIAC", fillDate, 30, Channel.RETAIL),
+                epochMillis(fillDate));
+        AdherenceState afterFill = function().currentadherenceState();
+
+        // a reversal pointing at a claim this key has never seen — upstream ordering or bad data
+        LocalDate reversalDate = fillDate.plusDays(5);
+        harness.processElement(
+                reversalEvent("claim-2", "member-1", "CHRONIC_CARDIAC", reversalDate, "claim-never-existed"),
+                epochMillis(reversalDate));
+
+        assertThat(function().metrics().count(AdherenceMetricsReporter.REVERSAL_WITHOUT_ORIGINAL)).isEqualTo(1L);
+
+        // state and the live timer are untouched — the unmatched reversal is a pure no-op
+        assertThat(function().currentadherenceState()).isEqualTo(afterFill);
+        assertThat(function().metrics().count(AdherenceMetricsReporter.TIMERS_REGISTERED)).isEqualTo(1L);
+        assertThat(harness.numEventTimeTimers()).isEqualTo(1);
     }
 
     private long epochMillis(LocalDate date) {
