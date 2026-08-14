@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ChronicClassFilterFunction
         extends BroadcastProcessFunction<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent>
@@ -31,14 +32,16 @@ public class ChronicClassFilterFunction
     // The first entry and every 500th are enough to tell "loading" from "never arrived".
     private static final long BROADCAST_LOG_EVERY = 500L;
 
-    // Per subtask and reset on restart: a log counter, not a metric. #150 adds the metric.
-    private transient long broadcastEntriesApplied;
+    // Per subtask, reset on restart. Also backs the broadcastEntriesLoaded gauge, read by the
+    // metric reporter thread — AtomicLong for visibility, not contention.
+    private transient AtomicLong broadcastEntriesApplied;
 
     public static final MapStateDescriptor<String, DrugClassRef> NDC_CLASS_DESCRIPTOR =
             new MapStateDescriptor<>("ndc-class-state", Types.STRING, TypeInformation.of(DrugClassRef.class));
     private static final ListStateDescriptor<RxFillEvent> BUFFER_DESCRIPTOR =
             new ListStateDescriptor<>("pre-broadcast-buffer",TypeInformation.of(RxFillEvent.class));
 
+    private transient AdherenceMetricsReporter metrics;
     private transient Counter droppedCounter;
     private transient ListState<RxFillEvent> bufferState;
 
@@ -54,8 +57,10 @@ public class ChronicClassFilterFunction
 
     @Override
     public void open(Configuration parameters) {
-        droppedCounter = AdherenceMetricsReporter.register(getRuntimeContext()).chronicFilterDropped();
-        broadcastEntriesApplied = 0L;
+        metrics = AdherenceMetricsReporter.register(getRuntimeContext());
+        droppedCounter = metrics.chronicFilterDropped();
+        broadcastEntriesApplied = new AtomicLong();
+        metrics.broadcastEntriesLoaded(broadcastEntriesApplied::get);
     }
 
     @Override
@@ -96,9 +101,9 @@ public class ChronicClassFilterFunction
         BroadcastState<String, DrugClassRef> broadcastState = context.getBroadcastState(NDC_CLASS_DESCRIPTOR);
         broadcastState.put(drugClassRefUpdate.ndcCode(), drugClassRefUpdate.drugClassRef());
 
-        broadcastEntriesApplied++;
-        if (broadcastEntriesApplied == 1L || broadcastEntriesApplied % BROADCAST_LOG_EVERY == 0L) {
-            LOG.info("Drug class broadcast applied {} entries on this subtask", broadcastEntriesApplied);
+        long applied = broadcastEntriesApplied.incrementAndGet();
+        if (applied == 1L || applied % BROADCAST_LOG_EVERY == 0L) {
+            LOG.info("Drug class broadcast applied {} entries on this subtask", applied);
         }
 
         List<RxFillEvent> remaining = new ArrayList<>();
@@ -124,5 +129,9 @@ public class ChronicClassFilterFunction
 
     public long droppedCount() {
         return droppedCounter.getCount();
+    }
+
+    AdherenceMetricsReporter metrics() {
+        return metrics;
     }
 }

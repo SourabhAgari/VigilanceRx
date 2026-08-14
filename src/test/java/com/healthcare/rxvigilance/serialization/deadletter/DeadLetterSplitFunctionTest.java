@@ -4,6 +4,7 @@ import com.healthcare.rxvigilance.logging.LogCapture;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
 import com.healthcare.rxvigilance.serialization.util.KafkaCoordinates;
 import com.healthcare.rxvigilance.serialization.util.KafkaSourceResult;
+import org.apache.flink.streaming.api.operators.ProcessOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.ProcessFunctionTestHarnesses;
@@ -82,6 +83,13 @@ class DeadLetterSplitFunctionTest {
             assertThat(logs.lines()).hasSize(2);
         }
         assertThat(harness.getSideOutput(DEAD_LETTER_TAG)).hasSize(100);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DeadLetterSplitFunction<String> function(
+            OneInputStreamOperatorTestHarness<KafkaSourceResult<String>, String> harness) {
+        return (DeadLetterSplitFunction<String>)
+                ((ProcessOperator<KafkaSourceResult<String>, String>) harness.getOperator()).getUserFunction();
     }
 
 }

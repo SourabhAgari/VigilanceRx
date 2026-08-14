@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class AdherenceProcessFunction extends
         KeyedBroadcastProcessFunction<Tuple2<String, String>, EnrichedFillEvent, AlertLeadTimeUpdate, Void> {
@@ -33,9 +34,11 @@ public class AdherenceProcessFunction extends
     private static final Logger LOG = LoggerFactory.getLogger(AdherenceProcessFunction.class);
 
     // Same reasoning as ChronicClassFilterFunction: a count, logged sparsely, so an
-    // empty broadcast is visible. Per subtask, reset on restart — a log, not a metric.
+    // empty broadcast is visible. Per subtask, reset on restart. As of #150 it also backs
+    // the broadcastEntriesLoaded gauge — volatile because the metric reporter thread reads
+    // it while the task thread writes it.
     private static final long BROADCAST_LOG_EVERY = 500L;
-    private transient long leadTimeEntriesApplied;
+    private transient AtomicLong leadTimeEntriesApplied;
 
     public static final OutputTag<GapRiskAlert> GAP_RISK_ALERT_TAG =
             new OutputTag<>("gap-risk-alert") {
@@ -56,9 +59,15 @@ public class AdherenceProcessFunction extends
     private final int defaultAlertLeadDays;
 
     private transient ValueState<AdherenceState> adherenceState;
+    private transient AdherenceMetricsReporter metrics;
     private transient Counter missingLeadTimeCounter;
     private transient Counter gapRiskAlertsEmittedCounter;
     private transient Counter lapsedAlertsEmittedCounter;
+    private transient Counter duplicateClaimIdDroppedCounter;
+    private transient Counter reversalWithoutOriginalCounter;
+    private transient Counter timersRegisteredCounter;
+    private transient Counter timersFiredCounter;
+    private transient Counter pdcSnapshotsEmittedCounter;
 
     public AdherenceProcessFunction(StateBackEndConfig stateBackEndConfig,
                                     int defaultAlertLeadDays) {
@@ -72,12 +81,18 @@ public class AdherenceProcessFunction extends
                 new ValueStateDescriptor<>("adherence-state", TypeInformation.of(AdherenceState.class));
         descriptor.enableTimeToLive(stateBackEndConfig.toStateTtlConfig());
         adherenceState = getRuntimeContext().getState(descriptor);
-        AdherenceMetricsReporter metrics = AdherenceMetricsReporter.register(getRuntimeContext());
+        metrics = AdherenceMetricsReporter.register(getRuntimeContext());
         missingLeadTimeCounter = metrics.missingLeadTimeLookup();
         gapRiskAlertsEmittedCounter = metrics.gapRiskAlertsEmitted();
         lapsedAlertsEmittedCounter = metrics.lapsedAlertsEmitted();
+        duplicateClaimIdDroppedCounter = metrics.duplicateClaimIdDropped();
+        reversalWithoutOriginalCounter = metrics.reversalWithoutOriginal();
+        timersRegisteredCounter = metrics.timersRegistered();
+        timersFiredCounter = metrics.timersFired();
+        pdcSnapshotsEmittedCounter = metrics.pdcSnapshotsEmitted();
 
-        leadTimeEntriesApplied = 0L;
+        leadTimeEntriesApplied = new AtomicLong();
+        metrics.broadcastEntriesLoaded(leadTimeEntriesApplied::get);
     }
 
     @Override
@@ -99,13 +114,12 @@ public class AdherenceProcessFunction extends
                     null, 0, List.of(), 0, null, null);
         }
 
-        AdherenceState merged = IntervalMerger.merge(currentState, enrichedFillEvent.event());
-        if (merged == currentState) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Fill event changed no coverage, ignoring: claimId={} drugClass={} "
-                                + "reason=duplicate-or-fully-covered",
-                        enrichedFillEvent.event().claimId(), enrichedFillEvent.drugClass());
-            }
+        IntervalMerger.MergeResult mergeResult = IntervalMerger.merge(currentState, enrichedFillEvent.event());
+        AdherenceState merged = mergeResult.state();
+        if (mergeResult.outcome() == IntervalMerger.MergeOutcome.DUPLICATE_CLAIM) {
+            duplicateClaimIdDroppedCounter.inc();
+            LOG.warn("Duplicate claimId already merged, ignoring: claimId={} drugClass={}",
+                    enrichedFillEvent.event().claimId(), enrichedFillEvent.drugClass());
             return;
         }
 
@@ -129,6 +143,7 @@ public class AdherenceProcessFunction extends
                 .toInstant()
                 .toEpochMilli();
         context.timerService().registerEventTimeTimer(timerTimestamp);
+        timersRegisteredCounter.inc();
 
         if (LOG.isDebugEnabled()) {
             LOG.debug("Registered GAP_RISK timer: claimId={} drugClass={} alertLeadDays={} "
@@ -136,6 +151,7 @@ public class AdherenceProcessFunction extends
                     enrichedFillEvent.event().claimId(), enrichedFillEvent.drugClass(), alertLeadDays,
                     timerTimestamp, Instant.ofEpochMilli(timerTimestamp), currentState.activeTimerTimestamp());
         }
+
 
         AdherenceState finalState = new AdherenceState(
                 merged.currentSupplyEndDate(), merged.lastFillDate(), merged.totalDaysCovered(),
@@ -146,6 +162,7 @@ public class AdherenceProcessFunction extends
         context.output(PDC_SNAPSHOT_OUTPUT_TAG, new PdcSnapshot(
                 enrichedFillEvent.event().memberId(), enrichedFillEvent.drugClass(), finalState.totalDaysCovered(),
                 finalState.currentSupplyEndDate(), context.timestamp()));
+        pdcSnapshotsEmittedCounter.inc();
     }
 
     private void handleReversal(EnrichedFillEvent event, ReadOnlyContext context) throws IOException {
@@ -158,9 +175,13 @@ public class AdherenceProcessFunction extends
             return;
         }
         RxFillEvent reversal = event.event();
-        AdherenceState unwound = IntervalMerger.unwind(currentState, reversal.originalClaimId());
+        IntervalMerger.UnwindResult unwoundResult = IntervalMerger.unwind(currentState, reversal.originalClaimId());
+        AdherenceState unwound = unwoundResult.state();
 
-        if (unwound == currentState) {
+        if (unwoundResult.outcome() == IntervalMerger.UnwindOutcome.NO_MATCHING_INTERVAL) {
+            reversalWithoutOriginalCounter.inc();
+            LOG.warn("Reversal matched no interval, ignoring: claimId={} originalClaimId={} drugClass={}",
+                    reversal.claimId(), reversal.originalClaimId(), event.drugClass());
             return;
         }
 
@@ -196,6 +217,7 @@ public class AdherenceProcessFunction extends
                 .minusDays(unwound.alertLeadDays())
                 .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
         context.timerService().registerEventTimeTimer(newTimerTimestamp);
+        timersRegisteredCounter.inc();
 
         if (LOG.isDebugEnabled()) {
             LOG.debug("Reversal left coverage, GAP_RISK timer re-armed: claimId={} originalClaimId={} "
@@ -216,14 +238,18 @@ public class AdherenceProcessFunction extends
                                         Collector<Void> collector) throws Exception {
         ctx.getBroadcastState(LEAD_TIME_DESCRIPTOR).put(alertLeadTimeUpdate.drugClassAndChannel(), alertLeadTimeUpdate.alertLeadDays());
 
-        leadTimeEntriesApplied++;
-        if (leadTimeEntriesApplied == 1L || leadTimeEntriesApplied % BROADCAST_LOG_EVERY == 0L) {
-            LOG.info("Alert lead time broadcast applied {} entries on this subtask", leadTimeEntriesApplied);
+        long applied = leadTimeEntriesApplied.incrementAndGet();
+        if (applied == 1L || applied % BROADCAST_LOG_EVERY == 0L) {
+            LOG.info("Alert lead time broadcast applied {} entries on this subtask", applied);
         }
     }
 
     AdherenceState currentadherenceState() throws IOException {
         return adherenceState.value();
+    }
+
+    AdherenceMetricsReporter metrics() {
+        return metrics;
     }
 
     public long missingLeadTimeCount() {
@@ -240,6 +266,7 @@ public class AdherenceProcessFunction extends
 
     @Override
     public void onTimer(long timestamp, OnTimerContext ctx, Collector<Void> out) throws Exception {
+        timersFiredCounter.inc();
         AdherenceState state = adherenceState.value();
         if (isStaleTimer(state, timestamp)) {
             logStaleTimer(state, ctx, timestamp);
@@ -302,6 +329,7 @@ public class AdherenceProcessFunction extends
         gapRiskAlertsEmittedCounter.inc();
 
         ctx.timerService().registerEventTimeTimer(projectedExhaustionMillis);
+        timersRegisteredCounter.inc();
 
         if (LOG.isDebugEnabled()) {
             LOG.debug("GapRiskAlert emitted, LAPSED timer registered: alertId={} memberId={} drugClass={} "

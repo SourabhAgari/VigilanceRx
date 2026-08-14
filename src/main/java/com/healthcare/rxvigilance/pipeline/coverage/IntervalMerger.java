@@ -3,8 +3,6 @@ package com.healthcare.rxvigilance.pipeline.coverage;
 import com.healthcare.rxvigilance.domain.AdherenceState;
 import com.healthcare.rxvigilance.domain.CoverageInterval;
 import com.healthcare.rxvigilance.domain.RxFillEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -13,13 +11,28 @@ import java.util.Comparator;
 import java.util.List;
 
 public final class IntervalMerger {
-
-    private static final Logger LOG = LoggerFactory.getLogger(IntervalMerger.class);
-
     private IntervalMerger() {
     }
 
     public record CoverageSummary(LocalDate currentSupplyEndDate, int totalDaysCovered) {
+    }
+
+    /** What {@link #merge} did. Kept separate from {@link UnwindOutcome} so merge cannot report a reversal reason. */
+    public enum MergeOutcome {
+        APPLIED,
+        DUPLICATE_CLAIM
+    }
+
+    /** What {@link #unwind} did. */
+    public enum UnwindOutcome {
+        APPLIED,
+        NO_MATCHING_INTERVAL
+    }
+
+    public record MergeResult(AdherenceState state, MergeOutcome outcome) {
+    }
+
+    public record UnwindResult(AdherenceState state, UnwindOutcome outcome) {
     }
 
     public static CoverageSummary recompute(List<CoverageInterval> intervals) {
@@ -55,12 +68,11 @@ public final class IntervalMerger {
         return new CoverageSummary(currentSupplyEndDate, totalDaysCovered);
     }
 
-    public static AdherenceState merge(AdherenceState state, RxFillEvent fill) {
+    public static MergeResult merge(AdherenceState state, RxFillEvent fill) {
         boolean alreadyProcessed = state.activeCoverageIntervals().stream()
                 .anyMatch(interval -> interval.claimId().equals(fill.claimId()));
         if (alreadyProcessed) {
-            LOG.warn("Duplicate claimId {} already merged; no-op", fill.claimId());
-            return state;
+            return new MergeResult(state, MergeOutcome.DUPLICATE_CLAIM);
         }
 
         CoverageInterval newInterval = new CoverageInterval(
@@ -76,36 +88,35 @@ public final class IntervalMerger {
                 ? fill.fillDate()
                 : state.lastFillDate();
 
-        return new AdherenceState(
+        return new MergeResult(new AdherenceState(
                 summary.currentSupplyEndDate(),
                 lastFillDate,
                 summary.totalDaysCovered(),
                 updatedIntervals,
                 state.alertLeadDays(),
                 state.activeTimerTimestamp(),
-                state.activeTimerStage());
+                state.activeTimerStage()), MergeOutcome.APPLIED);
     }
 
 
-    public static AdherenceState unwind(AdherenceState state, String originalClaimId) {
+    public static UnwindResult unwind(AdherenceState state, String originalClaimId) {
         List<CoverageInterval> remaining = new ArrayList<>(state.activeCoverageIntervals().stream()
                 .filter(interval -> !interval.claimId().equals(originalClaimId))
                 .toList());
 
         if (remaining.size() == state.activeCoverageIntervals().size()) {
-            LOG.warn("Reversal referenced unknown claimId {}; no matching interval found, no-op", originalClaimId);
-            return state;
+            return new UnwindResult(state, UnwindOutcome.NO_MATCHING_INTERVAL);
         }
 
         CoverageSummary summary = recompute(remaining);
 
-        return new AdherenceState(
+        return new UnwindResult(new AdherenceState(
                 summary.currentSupplyEndDate(),
                 state.lastFillDate(),
                 summary.totalDaysCovered(),
                 remaining,
                 state.alertLeadDays(),
                 state.activeTimerTimestamp(),
-                state.activeTimerStage());
+                state.activeTimerStage()), UnwindOutcome.APPLIED);
     }
 }
