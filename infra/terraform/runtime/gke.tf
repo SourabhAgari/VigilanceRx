@@ -27,7 +27,7 @@ resource "google_container_node_pool" "primary" {
 
   node_config {
     machine_type = "e2-standard-4"
-    spot         = false # D7: ~70% cheaper; preemption OK on self-healing demo
+    spot         = false # D74: non-spot for the Phase 11 observability window; revert to true per D7
     disk_size_gb = 50   # default is 100 GB; 50 is plenty and halves disk cost
 
 
