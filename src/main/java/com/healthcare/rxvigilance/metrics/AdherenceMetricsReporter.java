@@ -26,7 +26,7 @@ public class AdherenceMetricsReporter {
     public static final String TIMERS_REGISTERED = "timersRegistered";
     public static final String TIMERS_FIRED = "timersFired";
     public static final String PDC_SNAPSHOTS_EMITTED = "pdcSnapshotsEmitted";
-    public static final String BROADCAST_ENTRIES_LOADED = "broadcastEntriesLoaded";
+    public static final String BUFFERED_FILLS_AWAITING_REF = "bufferedFillsAwaitingRef";
 
     private final MetricGroup group;
 
@@ -94,14 +94,11 @@ public class AdherenceMetricsReporter {
         return counter(PDC_SNAPSHOTS_EMITTED);
     }
 
-    /**
-     * A gauge is read by the reporter thread, not the task thread, so it is handed the supplier
-     * rather than a value. One name serves both broadcasts: they live on different operators, so
-     * Flink's operator_name label already separates them and no per-broadcast name is needed.
-     */
-    public void broadcastEntriesLoaded(Gauge<Long> gauge) {
-        gauges.put(BROADCAST_ENTRIES_LOADED, gauge);
-        group.gauge(BROADCAST_ENTRIES_LOADED, gauge);
+
+
+    private void gauge(String name, Gauge<Long> gauge) {
+        gauges.put(name, gauge);
+        group.gauge(name, gauge);
     }
 
     /**
@@ -124,5 +121,13 @@ public class AdherenceMetricsReporter {
             throw new IllegalArgumentException("No gauge registered under name: " + name);
         }
         return gauge.getValue();
+    }
+    /**
+     * Fills held in ChronicClassFilterFunction's buffer because their drug-class ref has not
+     * arrived. Measures the damage rather than the reference data, so it is correct immediately
+     * after a restore and with nothing flowing — see #175.
+     */
+    public void bufferedFillsAwaitingRef(Gauge<Long> gauge) {
+        gauge(BUFFERED_FILLS_AWAITING_REF, gauge);
     }
 }

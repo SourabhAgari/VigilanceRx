@@ -33,10 +33,9 @@ public class AdherenceProcessFunction extends
 
     private static final Logger LOG = LoggerFactory.getLogger(AdherenceProcessFunction.class);
 
-    // Same reasoning as ChronicClassFilterFunction: a count, logged sparsely, so an
-    // empty broadcast is visible. Per subtask, reset on restart. As of #150 it also backs
-    // the broadcastEntriesLoaded gauge — volatile because the metric reporter thread reads
-    // it while the task thread writes it.
+    // A count, logged sparsely, so reference data that never arrives is visible in the log.
+    // Per subtask and reset on restart — that reset is exactly why it no longer backs a gauge
+    // (#175). AtomicLong so the increment and the read are one operation (Sonar S3078).
     private static final long BROADCAST_LOG_EVERY = 500L;
     private transient AtomicLong leadTimeEntriesApplied;
 
@@ -92,7 +91,6 @@ public class AdherenceProcessFunction extends
         pdcSnapshotsEmittedCounter = metrics.pdcSnapshotsEmitted();
 
         leadTimeEntriesApplied = new AtomicLong();
-        metrics.broadcastEntriesLoaded(leadTimeEntriesApplied::get);
     }
 
     @Override

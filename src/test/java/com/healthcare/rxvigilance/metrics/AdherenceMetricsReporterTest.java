@@ -26,7 +26,7 @@ class AdherenceMetricsReporterTest {
         assertThat(AdherenceMetricsReporter.TIMERS_REGISTERED).isEqualTo("timersRegistered");
         assertThat(AdherenceMetricsReporter.TIMERS_FIRED).isEqualTo("timersFired");
         assertThat(AdherenceMetricsReporter.PDC_SNAPSHOTS_EMITTED).isEqualTo("pdcSnapshotsEmitted");
-        assertThat(AdherenceMetricsReporter.BROADCAST_ENTRIES_LOADED).isEqualTo("broadcastEntriesLoaded");
+        assertThat(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF).isEqualTo("bufferedFillsAwaitingRef");
     }
 
     /**
@@ -46,8 +46,7 @@ class AdherenceMetricsReporterTest {
                 AdherenceMetricsReporter.REVERSAL_WITHOUT_ORIGINAL,
                 AdherenceMetricsReporter.TIMERS_REGISTERED,
                 AdherenceMetricsReporter.TIMERS_FIRED,
-                AdherenceMetricsReporter.PDC_SNAPSHOTS_EMITTED,
-                AdherenceMetricsReporter.BROADCAST_ENTRIES_LOADED))
+                AdherenceMetricsReporter.PDC_SNAPSHOTS_EMITTED))
                 .doesNotHaveDuplicates();
     }
 }
