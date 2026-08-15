@@ -33,6 +33,18 @@ jobs:
       - name: Build and test
         run: mvn -B clean verify
 
+      - name: Validate Grafana Dashboard JSON
+        run: |
+          for f in k8s/flink/grafana-dashboards/*.yaml; do
+            python3 - "$f" <<'EOF'
+          import sys, yaml, json 
+          d = yaml.safe_load(open(sys.argv[1])) 
+          for key, raw in d["data"].items():
+            json.loads(raw)
+            print(f"{sys.argv[1]}: {key} OK") 
+          EOF
+          done
+
       - name: Set up JDK 21 (Sonar scanner runtime only)
         uses: actions/setup-java@v4
         with:

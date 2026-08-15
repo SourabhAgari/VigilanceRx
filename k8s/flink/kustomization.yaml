@@ -7,6 +7,14 @@ resources:
   - secret-store.yaml
   - external-secrets.yaml
   - podmonitor.yaml
+  # Dashboards live here rather than observability/ because the Grafana sidecar
+  # runs with NAMESPACE=ALL, so a ConfigMap in rx-vigilance is picked up — which
+  # puts them inside Argo CD's path and gets them deployed on merge. D76 revises
+  # D68, which assumed the sidecar watched only its own namespace.
+  - grafana-dashboards/grafana-dashboard-support.yaml
+  - grafana-dashboards/grafana-dashboard-developer.yaml
+  - grafana-dashboards/grafana-dashboard-platform.yaml
+  - grafana-dashboards/grafana-dashboard-business.yaml
 configurations:
   - imagetransformer.yaml
 images:
