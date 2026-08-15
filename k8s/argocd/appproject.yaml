@@ -37,3 +37,5 @@ spec:
       kind: ExternalSecret
     - group: monitoring.coreos.com
       kind: PodMonitor
+    - group: ""
+      kind: ConfigMap

@@ -1,0 +1,921 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rx-vigilance-dashboard-platform
+  namespace: rx-vigilance
+  labels:
+    # grafana-sc-dashboard watches every namespace (NAMESPACE=ALL) for this exact
+    # label and value. The value is the string "1" — a YAML boolean is ignored
+    # silently, which looks identical to the dashboard simply not working.
+    grafana_dashboard: "1"
+data:
+  platform.json: |-
+    {
+      "uid": "rxv-platform",
+      "title": "RxVigilance — Platform",
+      "tags": [
+        "rx-vigilance"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "refresh": "1m",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "links": [
+        {
+          "type": "dashboards",
+          "title": "RxVigilance",
+          "tags": [
+            "rx-vigilance"
+          ],
+          "asDropdown": true,
+          "includeVars": true,
+          "keepTime": true
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "ds",
+            "label": "Datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "hide": 0
+          },
+          {
+            "name": "namespace",
+            "label": "Namespace",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${ds}"
+            },
+            "query": "label_values(kube_pod_info, namespace)",
+            "refresh": 1,
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "current": {
+              "text": "rx-vigilance",
+              "value": "rx-vigilance"
+            },
+            "sort": 1
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 100,
+          "type": "row",
+          "title": "Capacity — requests against Allocatable",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "panels": []
+        },
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "CPU requested vs allocatable, per node",
+          "description": "CLAUDE.md §10: pods are scheduled against Allocatable, not Capacity — the node reserves a slice for the kubelet and OS. When requested approaches allocatable, the next pod stays Pending with no obvious cause. This is the panel that explains it.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (node) (kube_pod_container_resource_requests{resource=\"cpu\"})",
+              "legendFormat": "{{node}} requested"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (node) (kube_node_status_allocatable{resource=\"cpu\"})",
+              "legendFormat": "{{node}} allocatable"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Memory requested vs allocatable, per node",
+          "description": "Same story for memory, and the one that bites this job: RocksDB runs off-heap, so the TaskManager's real appetite is larger than its JVM heap. §10 calls this out specifically.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (node) (kube_pod_container_resource_requests{resource=\"memory\"})",
+              "legendFormat": "{{node}} requested"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (node) (kube_node_status_allocatable{resource=\"memory\"})",
+              "legendFormat": "{{node}} allocatable"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Node CPU actually used",
+          "description": "Requests are a promise; this is consumption. Low usage with high requests means over-requesting and wasted capacity. High usage with low requests means the scheduler is being lied to and neighbours will suffer.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 9
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 75
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 90
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "(1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval]))) * 100",
+              "legendFormat": "{{instance}}"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Node memory actually used",
+          "description": "Memory is not compressible — a node that runs out kills containers rather than slowing them down. Watch this alongside the OOMKill tile below.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 9
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 80
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 92
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+              "legendFormat": "{{instance}}"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 200,
+          "type": "row",
+          "title": "Pods and containers",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 17
+          },
+          "panels": []
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Container memory against its limit",
+          "description": "Percentage of the configured limit each pod is using. Crossing 100% is not throttling — it is an instant kill. Anything sustained above 85% has no headroom for a spike.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 85
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 95
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\"}) / sum by (pod) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\"}) * 100",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 6,
+          "type": "table",
+          "title": "Why containers last terminated",
+          "description": "The reason matters more than the count. OOMKilled means the limit is too low. Error means the process failed. On a spot pool, a node simply disappearing shows up here too — check whether the node name changed before assuming a crash.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "kube_pod_container_status_last_terminated_reason{namespace=~\"$namespace\"} > 0",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true,
+                  "__name__": true,
+                  "endpoint": true,
+                  "instance": true,
+                  "job": true,
+                  "service": true,
+                  "uid": true
+                },
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "pod": "Pod",
+                  "container": "Container",
+                  "reason": "Reason"
+                }
+              }
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "OOMKills",
+          "description": "Containers killed for exceeding their memory limit. Any non-zero value means a limit is wrong, and the fix is a number in the manifest — not a restart.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 26
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\"})",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Pods not Running",
+          "description": "Pods in any phase other than Running or Succeeded. Usually Pending, which on this cluster usually means the capacity panels above have run out of room.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 26
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(kube_pod_status_phase{namespace=~\"$namespace\", phase=~\"Pending|Failed|Unknown\"})",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Nodes",
+          "description": "Node count. These are spot nodes (D7, temporarily disabled by D74), so a drop is preemption rather than failure — expected, but it explains a burst of restarts across unrelated pods.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 26
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#FF453A",
+                    "value": null
+                  },
+                  {
+                    "color": "#30D158",
+                    "value": 2
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "count(kube_node_info)",
+              "instant": false
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "Scrape targets down",
+          "description": "Endpoints Prometheus cannot reach. Non-zero means some of this dashboard is blind — and a panel with no data looks exactly like a healthy zero, so check here before trusting anything else.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 26
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(up == 0)",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 300,
+          "type": "row",
+          "title": "Is the monitoring itself healthy?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 31
+          },
+          "panels": []
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Scrape targets up, by job",
+          "description": "One line per scrape job. A line dropping to zero is a component that stopped being observed — which is not the same as a component that stopped working, and confusing the two wastes an incident.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 32
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (job) (up)",
+              "legendFormat": "{{job}}"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Prometheus load",
+          "description": "Series held in memory, and Prometheus's own memory use against its 1Gi limit. Series count is the thing that grows silently — a label with unbounded values (a claim id, a member id) multiplies it, which is why §150 forbids putting those in metric labels.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 32
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "series in memory"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#0A84FF"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "prometheus memory (MiB)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#5E5CE6"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "prometheus_tsdb_head_series",
+              "legendFormat": "series in memory"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"monitoring\", pod=~\"prometheus-.*\", container!=\"\"}) / 1024 / 1024",
+              "legendFormat": "prometheus memory (MiB)"
+            }
+          ],
+          "transparent": true
+        }
+      ],
+      "graphTooltip": 1
+    }

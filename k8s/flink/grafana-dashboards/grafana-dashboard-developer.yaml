@@ -1,0 +1,1620 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rx-vigilance-dashboard-developer
+  namespace: rx-vigilance
+  labels:
+    # grafana-sc-dashboard watches every namespace (NAMESPACE=ALL) for this exact
+    # label and value. The value is the string "1" — a YAML boolean is ignored
+    # silently, which looks identical to the dashboard simply not working.
+    grafana_dashboard: "1"
+data:
+  developer.json: |-
+    {
+      "uid": "rxv-developer",
+      "title": "RxVigilance — Developer",
+      "tags": [
+        "rx-vigilance"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "links": [
+        {
+          "type": "dashboards",
+          "title": "RxVigilance",
+          "tags": [
+            "rx-vigilance"
+          ],
+          "asDropdown": true,
+          "includeVars": true,
+          "keepTime": true
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "ds",
+            "label": "Datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "hide": 0
+          },
+          {
+            "name": "job",
+            "label": "Flink job",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${ds}"
+            },
+            "query": "label_values(flink_jobmanager_job_uptime, job_name)",
+            "refresh": 1,
+            "sort": 1
+          },
+          {
+            "name": "operator",
+            "label": "Operator",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${ds}"
+            },
+            "query": "label_values(flink_taskmanager_job_task_operator_numRecordsInPerSecond{job_name=\"$job\"}, operator_name)",
+            "refresh": 2,
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "sort": 1
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "name": "Job restarts",
+            "enable": true,
+            "iconColor": "red",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${ds}"
+            },
+            "expr": "resets(flink_jobmanager_job_uptime{job_name=\"$job\"}[$__rate_interval]) > 0",
+            "titleFormat": "Job restarted",
+            "step": "60s"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 100,
+          "type": "row",
+          "title": "Throughput",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "panels": []
+        },
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Records in / sec",
+          "description": "Per operator. A chain that shows records in but none out downstream is where the pipeline is losing them — start there, then check the drop counters on the Data quality row.",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "fillOpacity": 12,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (operator_name) (flink_taskmanager_job_task_operator_numRecordsInPerSecond{job_name=\"$job\", operator_name=~\"$operator\"})",
+              "legendFormat": "{{operator_name}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Records out / sec",
+          "description": "Compare against records in on the left. Sustained divergence means records are being dropped, buffered or filtered — all three are counted on the Data quality row.",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 9
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "fillOpacity": 12,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (operator_name) (flink_taskmanager_job_task_operator_numRecordsOutPerSecond{job_name=\"$job\", operator_name=~\"$operator\"})",
+              "legendFormat": "{{operator_name}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Busy %",
+          "description": "Share of each second a task spends doing work. Sustained near 100% is the bottleneck task. Reported per task, so names are the full operator chain.",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 17
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 70
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 90
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "label_replace(flink_taskmanager_job_task_busyTimeMsPerSecond{job_name=\"$job\"} / 10, \"task\", \"$1\", \"task_name\", \"^(.{0,34}).*\")",
+              "legendFormat": "{{task}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Backpressure %",
+          "description": "Share of each second a task spends blocked because the task after it cannot keep up. Read right to left: the LAST task showing backpressure is upstream of the real problem.",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 25
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 20
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 50
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "label_replace(flink_taskmanager_job_task_backPressuredTimeMsPerSecond{job_name=\"$job\"} / 10, \"task\", \"$1\", \"task_name\", \"^(.{0,34}).*\")",
+              "legendFormat": "{{task}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 200,
+          "type": "row",
+          "title": "Watermarks and timers",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 41
+          },
+          "panels": []
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Watermark lag",
+          "description": "Wall clock minus the operator's watermark. Grows without bound while sources are idle — check Source idle time before treating a rise as a stall. CLAUDE.md §10 names watermark stalls as the #1 silent failure.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 42
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "(time() * 1000 - (flink_taskmanager_job_task_operator_currentOutputWatermark{job_name=\"$job\", operator_name=~\"$operator\"} > -9e18)) / 1000",
+              "legendFormat": "{{operator_name}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Source idle time",
+          "description": "How long each source has had nothing to read. A high value here explains a rising watermark lag and means the job is fine — it is the pair of panels that tells 'idle' apart from 'stuck'.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 42
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_taskmanager_job_task_operator_sourceIdleTime{job_name=\"$job\"}",
+              "legendFormat": "{{operator_name}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Timers registered vs fired",
+          "description": "Registered climbing while fired stays flat is the watermark-stall signature: work is scheduled and never runs, while every other metric looks healthy. Fired counts every firing including stale ones, on purpose (D73).",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 50
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 12,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "registered"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#0A84FF"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "fired"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#30D158"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_timersRegistered{job_name=\"$job\"})",
+              "legendFormat": "registered"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_timersFired{job_name=\"$job\"})",
+              "legendFormat": "fired"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Timer backlog",
+          "description": "Registered minus fired — timers scheduled but not yet run. A steady small number is normal; steady growth means firings are not keeping up with registrations.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 50
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 100
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1000
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_timersRegistered{job_name=\"$job\"}) - sum(flink_taskmanager_job_task_operator_adherence_timersFired{job_name=\"$job\"})",
+              "instant": true
+            }
+          ],
+          "transparent": true,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          }
+        },
+        {
+          "id": 300,
+          "type": "row",
+          "title": "Checkpoints and state",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 58
+          },
+          "panels": []
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Checkpoint duration",
+          "description": "Time for the last checkpoint to complete. Checkpoints run every 30s, so a duration climbing toward that is the warning — once it exceeds the interval they overlap and the job stalls itself.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 0,
+            "y": 59
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 10000
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 25000
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "duration"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#0A84FF"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_lastCheckpointDuration{job_name=\"$job\"}",
+              "legendFormat": "duration"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Checkpoint size",
+          "description": "Incremental size, and full size for comparison. Incremental growing toward full means less is being reused between checkpoints. Steady growth in full size is state that is never being cleaned up.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 8,
+            "y": 59
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "incremental"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#0A84FF"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "full"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#5E5CE6"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_lastCheckpointSize{job_name=\"$job\"}",
+              "legendFormat": "incremental"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_lastCheckpointFullSize{job_name=\"$job\"}",
+              "legendFormat": "full"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Checkpoints completed vs failed, and restarts",
+          "description": "Completed should rise steadily. Failed rising, or restarts rising at all, means the job is not holding state — cross-check against the red restart annotations on every panel above.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 59
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "completed"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#30D158"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failed"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF453A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "restarts"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9F0A"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_numberOfCompletedCheckpoints{job_name=\"$job\"}",
+              "legendFormat": "completed"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_numberOfFailedCheckpoints{job_name=\"$job\"}",
+              "legendFormat": "failed"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_numRestarts{job_name=\"$job\"}",
+              "legendFormat": "restarts"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "RocksDB keys held",
+          "description": "Estimated keys per column family. adherence_state is one entry per member and drug class — this is the closest thing to 'how many members are we tracking'. Growth that never levels off is state with no expiry reaching it, despite the 400-day TTL.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 0,
+            "y": 66
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_taskmanager_job_task_operator_column_family_rocksdb_estimate_num_keys{job_name=\"$job\"}",
+              "legendFormat": "{{column_family}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "RocksDB live data size",
+          "description": "Bytes on disk per column family. Read alongside key count: a million small states and a thousand huge ones look identical by key count, and only one of them fills the disk.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 8,
+            "y": 66
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_taskmanager_job_task_operator_column_family_rocksdb_estimate_live_data_size{job_name=\"$job\"}",
+              "legendFormat": "{{column_family}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "RocksDB pending compaction",
+          "description": "Bytes waiting to be compacted. This is the leading indicator for write stalls: when compaction falls behind, RocksDB throttles writes and the job slows with no error, no failed checkpoint and no exception. Rising here explains throughput dropping for no visible reason.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 66
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 268435456
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1073741824
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_taskmanager_job_task_operator_column_family_rocksdb_estimate_pending_compaction_bytes{job_name=\"$job\"}",
+              "legendFormat": "{{column_family}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 400,
+          "type": "row",
+          "title": "Data quality and output",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 73
+          },
+          "panels": []
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Dead letters by source",
+          "description": "Messages that could not be deserialised, split by which source topic they came from. Every one is on the dead-letter topic with its exact partition and offset in the headers (#149) — read the payload from there, never from the log.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 74
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_taskmanager_job_task_operator_adherence_deadLetterRecords{job_name=\"$job\"}",
+              "legendFormat": "{{operator_name}}"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 16,
+          "type": "stat",
+          "title": "Fills buffered awaiting drug-class ref",
+          "description": "Fills parked because their NDC has no drug-class reference yet. A steady rise is the nastiest silent failure in this job: records flow in, nothing comes out, and no error is raised anywhere. Correct immediately after a restart, unlike the arrival counter it replaced (#175, D75).",
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 12,
+            "y": 74
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 1
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1000
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_bufferedFillsAwaitingRef{job_name=\"$job\"})",
+              "instant": true
+            }
+          ],
+          "transparent": true,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          }
+        },
+        {
+          "id": 17,
+          "type": "stat",
+          "title": "Missing lead-time lookups",
+          "description": "Fills whose (drug class, channel) had no entry in the lead-time broadcast, so the configured default was used instead. Non-zero means alerts are being timed by a fallback rather than by real reference data — §4 says alertLeadDays is never a constant.",
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 18,
+            "y": 74
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_missingLeadTimeLookup{job_name=\"$job\"})",
+              "instant": true
+            }
+          ],
+          "transparent": true,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          }
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "Records dropped and anomalies",
+          "description": "Four different reasons a record changed nothing. chronicFilterDropped is expected volume — non-chronic drugs. The other three mean upstream sent something odd: a repeated claim, a reversal for a claim we never saw.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 82
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "not chronic"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#8E8E93"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "duplicate claim"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#BF5AF2"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "reversal, no original"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF375F"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_chronicFilterDropped{job_name=\"$job\"})",
+              "legendFormat": "not chronic"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_duplicateClaimIdDropped{job_name=\"$job\"})",
+              "legendFormat": "duplicate claim"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_reversalWithoutOriginal{job_name=\"$job\"})",
+              "legendFormat": "reversal, no original"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        },
+        {
+          "id": 19,
+          "type": "timeseries",
+          "title": "Business output emitted",
+          "description": "What the job exists to produce. Every technical metric can look healthy while these stay at zero — that combination is the failure only this panel catches.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 82
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 12,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "gap-risk alerts"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#30D158"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "lapsed alerts"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9F0A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "PDC snapshots"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#0A84FF"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_gapRiskAlertsEmitted{job_name=\"$job\"})",
+              "legendFormat": "gap-risk alerts"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_lapsedAlertsEmitted{job_name=\"$job\"})",
+              "legendFormat": "lapsed alerts"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_pdcSnapshotsEmitted{job_name=\"$job\"})",
+              "legendFormat": "PDC snapshots"
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "transparent": true
+        }
+      ],
+      "graphTooltip": 1
+    }

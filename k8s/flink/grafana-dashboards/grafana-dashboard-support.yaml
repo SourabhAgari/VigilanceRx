@@ -1,0 +1,1091 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rx-vigilance-dashboard-support
+  namespace: rx-vigilance
+  labels:
+    # grafana-sc-dashboard watches every namespace (NAMESPACE=ALL) for this exact
+    # label and value. The value is the string "1" — a YAML boolean is ignored
+    # silently, which looks identical to the dashboard simply not working.
+    grafana_dashboard: "1"
+
+data:
+  support.json: |-
+    {
+      "uid": "rxv-support",
+      "title": "RxVigilance — Support",
+      "tags": [
+        "rx-vigilance"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "links": [
+        {
+          "type": "dashboards",
+          "title": "RxVigilance",
+          "tags": [
+            "rx-vigilance"
+          ],
+          "asDropdown": true,
+          "includeVars": true,
+          "keepTime": true
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "ds",
+            "label": "Datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "hide": 0
+          },
+          {
+            "name": "job",
+            "label": "Flink job",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${ds}"
+            },
+            "query": "label_values(flink_jobmanager_job_uptime, job_name)",
+            "refresh": 1,
+            "sort": 1
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "name": "Job restarts",
+            "enable": true,
+            "iconColor": "red",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${ds}"
+            },
+            "expr": "resets(flink_jobmanager_job_uptime{job_name=\"$job\"}[$__rate_interval]) > 0",
+            "titleFormat": "Job restarted",
+            "step": "60s"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 100,
+          "type": "row",
+          "title": "Status",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "panels": []
+        },
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Job uptime",
+          "description": "How long the current job attempt has been running. NO DATA here means the job is not running at all — that is the first thing to check, and it makes every other tile meaningless.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 0,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "noValue": "JOB DOWN",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#FF453A",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 60000
+                  },
+                  {
+                    "color": "#30D158",
+                    "value": 600000
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "auto",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_uptime{job_name=\"$job\"}",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Restarts (1h)",
+          "description": "Restarts in the last hour. Anything above zero means the job is not holding steady — check the red annotations on the graphs below to see when, then the pod logs for why. #172 was 470 restarts over 13 hours with nothing else looking wrong.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 4,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 1
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 3
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "increase(flink_jobmanager_job_numRestarts{job_name=\"$job\"}[1h])",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Failed checkpoints",
+          "description": "Checkpoints that did not complete. Non-zero means the job cannot reliably save its state, so a restart would lose work. Usually storage or network, not application code — that makes it a platform problem.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_numberOfFailedCheckpoints{job_name=\"$job\"}",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Watermark lag",
+          "description": "How far behind wall clock the job's event-time clock is. IMPORTANT: this grows without bound whenever no data is arriving, which is normal. Check Kafka consumer lag and source idle time before treating a high value as a fault.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 12,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "noValue": "no watermark",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 3600
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 86400
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "max((time() * 1000 - (flink_taskmanager_job_task_operator_currentOutputWatermark{job_name=\"$job\", operator_name=\"adherence_process\"} > -9e18)) / 1000)",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Dead letters",
+          "description": "Messages that could not be decoded, across all three sources. Non-zero means bad data is arriving — an upstream problem, not ours. Every one is on the dead-letter topic with its exact topic, partition and offset in the headers.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 16,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_deadLetterRecords{job_name=\"$job\"})",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Fills stuck waiting",
+          "description": "Fills held because their drug-class reference has not arrived. A rising number is the nastiest silent failure here: records flow in, nothing comes out, and nothing errors. Fix is to republish the reference data.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 20,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 1
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1000
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_bufferedFillsAwaitingRef{job_name=\"$job\"})",
+              "instant": true
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 200,
+          "type": "row",
+          "title": "Where is the problem?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 6
+          },
+          "panels": []
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Application — data the job could not use",
+          "description": "OUR PROBLEM, or the data producer's. Anything rising here means records arrived and changed nothing. Duplicate claims and unmatched reversals point upstream; missing lead time points at reference data.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "duplicate claim"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#BF5AF2"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "reversal, no original"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF375F"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "missing lead time"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FFD60A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "dead letters"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF453A"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_duplicateClaimIdDropped{job_name=\"$job\"})",
+              "legendFormat": "duplicate claim"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_reversalWithoutOriginal{job_name=\"$job\"})",
+              "legendFormat": "reversal, no original"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_missingLeadTimeLookup{job_name=\"$job\"})",
+              "legendFormat": "missing lead time"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_deadLetterRecords{job_name=\"$job\"})",
+              "legendFormat": "dead letters"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Flink — is the engine keeping up?",
+          "description": "PLATFORM PROBLEM if these are high. Backpressure means a task cannot keep pace; checkpoint duration climbing toward the 30s interval means checkpoints will start overlapping and the job stalls itself.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "worst backpressure %"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9F0A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "checkpoint duration (s)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#0A84FF"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "max(flink_taskmanager_job_task_backPressuredTimeMsPerSecond{job_name=\"$job\"}) / 10",
+              "legendFormat": "worst backpressure %"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "flink_jobmanager_job_lastCheckpointDuration{job_name=\"$job\"} / 1000",
+              "legendFormat": "checkpoint duration (s)"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Kafka — is the broker side healthy?",
+          "description": "KAFKA / INFRA PROBLEM. Consumer lag rising means the job is falling behind the topic. Failed offset commits mean it cannot record progress, so a restart replays. Both are broker or network, not application logic.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "worst consumer lag"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9F0A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "failed commits"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF453A"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "max(flink_taskmanager_job_task_operator_KafkaSourceReader_KafkaConsumer_records_lag_max{job_name=\"$job\"})",
+              "legendFormat": "worst consumer lag"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_KafkaSourceReader_commitsFailed{job_name=\"$job\"})",
+              "legendFormat": "failed commits"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Kubernetes — are the pods healthy?",
+          "description": "KUBERNETES PROBLEM. Container restarts, and memory in use per container. On a two-node spot pool a restart may just be preemption — check whether the node changed before assuming a crash (CLAUDE.md §10).",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "container restarts"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9F0A"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"rx-vigilance\"})",
+              "legendFormat": "container restarts"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"rx-vigilance\", container!=\"\"}) / 1024 / 1024",
+              "legendFormat": "{{pod}} memory (MiB)"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 300,
+          "type": "row",
+          "title": "What is running, and is it producing anything?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 23
+          },
+          "panels": []
+        },
+        {
+          "id": 11,
+          "type": "table",
+          "title": "Running images",
+          "description": "Which build is actually deployed. The image tag is the git SHA that produced it, so this is how you tie behaviour on the cluster back to a commit. #172 was diagnosed by noticing the running image predated the change being investigated.",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "kube_pod_container_info{namespace=\"rx-vigilance\"}",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true,
+                  "__name__": true,
+                  "endpoint": true,
+                  "instance": true,
+                  "job": true,
+                  "service": true,
+                  "namespace": true,
+                  "uid": true,
+                  "container_id": true,
+                  "image_id": true,
+                  "image_spec": true
+                },
+                "renameByName": {
+                  "pod": "Pod",
+                  "container": "Container",
+                  "image": "Image"
+                }
+              }
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "Is it producing alerts?",
+          "description": "The output the job exists for. Every technical tile above can be green while these sit at zero — that combination is a real failure and this is the only panel that shows it.",
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 12,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "gap-risk alerts"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#30D158"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "lapsed alerts"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9F0A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "PDC snapshots"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#0A84FF"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_gapRiskAlertsEmitted{job_name=\"$job\"})",
+              "legendFormat": "gap-risk alerts"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_lapsedAlertsEmitted{job_name=\"$job\"})",
+              "legendFormat": "lapsed alerts"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_pdcSnapshotsEmitted{job_name=\"$job\"})",
+              "legendFormat": "PDC snapshots"
+            }
+          ],
+          "transparent": true
+        }
+      ],
+      "graphTooltip": 1
+    }

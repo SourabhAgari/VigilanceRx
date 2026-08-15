@@ -1,0 +1,932 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rx-vigilance-dashboard-business
+  namespace: rx-vigilance
+  labels:
+    # grafana-sc-dashboard watches every namespace (NAMESPACE=ALL) for this exact
+    # label and value. The value is the string "1" — a YAML boolean is ignored
+    # silently, which looks identical to the dashboard simply not working.
+    grafana_dashboard: "1"
+data:
+  business.json: |-
+    {
+      "uid": "rxv-business",
+      "title": "RxVigilance — Adherence health",
+      "tags": [
+        "rx-vigilance"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "refresh": "5m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "links": [
+        {
+          "type": "dashboards",
+          "title": "RxVigilance",
+          "tags": [
+            "rx-vigilance"
+          ],
+          "asDropdown": true,
+          "includeVars": true,
+          "keepTime": true
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "ds",
+            "label": "Datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "hide": 0
+          },
+          {
+            "name": "job",
+            "label": "Flink job",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${ds}"
+            },
+            "query": "label_values(flink_jobmanager_job_uptime, job_name)",
+            "refresh": 1,
+            "sort": 1
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "name": "Job restarts",
+            "enable": true,
+            "iconColor": "red",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${ds}"
+            },
+            "expr": "resets(flink_jobmanager_job_uptime{job_name=\"$job\"}[$__rate_interval]) > 0",
+            "titleFormat": "Job restarted",
+            "step": "60s"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 100,
+          "type": "row",
+          "title": "What the job has produced",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "panels": []
+        },
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Gap-risk alerts",
+          "description": "Members warned that their supply is about to run out, while there is still time to refill. This is the number the whole pipeline exists to produce — an intervention that prevents a gap rather than reporting one.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#30D158"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_gapRiskAlertsEmitted{job_name=\"$job\"})",
+              "legendFormat": "gap-risk"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Lapsed alerts",
+          "description": "Members whose supply has already run out. Every one of these is a gap that was not prevented. Rising faster than gap-risk alerts means warnings are arriving too late to act on — check the lead-time reference data.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#FF9F0A"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_lapsedAlertsEmitted{job_name=\"$job\"})",
+              "legendFormat": "lapsed"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "PDC snapshots",
+          "description": "Coverage recalculations published downstream — one per fill that changed a member's picture. This is the feed anything reporting on adherence consumes.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_pdcSnapshotsEmitted{job_name=\"$job\"})",
+              "legendFormat": "snapshots"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Members under watch",
+          "description": "Distinct member and drug-class combinations currently held in state. This is the size of the population being monitored. A number that only ever grows means state is not expiring despite the 400-day TTL.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "max(flink_taskmanager_job_task_operator_column_family_rocksdb_estimate_num_keys{job_name=\"$job\", column_family=\"adherence_state\"})",
+              "legendFormat": "members tracked"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 200,
+          "type": "row",
+          "title": "Is output keeping pace with input?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 6
+          },
+          "panels": []
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Alerts per hour",
+          "description": "The shape matters more than the number. A flat line at zero while fills are arriving is the failure this dashboard exists to catch — every technical metric can be green while this stays flat.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 12,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "gap-risk / h"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#30D158"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "lapsed / h"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9F0A"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(increase(flink_taskmanager_job_task_operator_adherence_gapRiskAlertsEmitted{job_name=\"$job\"}[1h]))",
+              "legendFormat": "gap-risk / h"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(increase(flink_taskmanager_job_task_operator_adherence_lapsedAlertsEmitted{job_name=\"$job\"}[1h]))",
+              "legendFormat": "lapsed / h"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Fills in vs snapshots out, per hour",
+          "description": "Every fill that changes coverage should produce a snapshot. Input rising while output stays flat means fills are being dropped, buffered or ignored — the panels on the bottom row say which.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "fillOpacity": 12,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "fills in / h"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#0A84FF"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "snapshots out / h"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#30D158"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(increase(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"$job\", operator_name=\"chronic_class_filter\"}[1h]))",
+              "legendFormat": "fills in / h"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(increase(flink_taskmanager_job_task_operator_adherence_pdcSnapshotsEmitted{job_name=\"$job\"}[1h]))",
+              "legendFormat": "snapshots out / h"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Share of fills filtered as non-chronic",
+          "description": "Fills dropped because the drug is not a chronic medication. A normal, expected share of traffic — but a sudden move in either direction means the drug-class reference data changed, and nobody would otherwise notice.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "custom": {
+                "fillOpacity": 12,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "% filtered out"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#8E8E93"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_chronicFilterDropped{job_name=\"$job\"}) / clamp_min(sum(flink_taskmanager_job_task_operator_numRecordsIn{job_name=\"$job\", operator_name=\"chronic_class_filter\"}), 1) * 100",
+              "legendFormat": "% filtered out"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "How fresh is this picture?",
+          "description": "How far behind wall clock the job's event-time view is. Everything on this dashboard describes the world as of this far back. Grows steadily whenever no fills are arriving, which is normal — it means the numbers are stale, not wrong.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "noValue": "no data yet",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 3600
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 86400
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "textMode": "auto",
+            "text": {
+              "valueSize": 40,
+              "titleSize": 13
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "max((time() * 1000 - (flink_taskmanager_job_task_operator_currentOutputWatermark{job_name=\"$job\", operator_name=\"adherence_process\"} > -9e18)) / 1000)",
+              "legendFormat": "data age"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 300,
+          "type": "row",
+          "title": "Can the answers be trusted?",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 23
+          },
+          "panels": []
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Alerts timed by a fallback, not by real data",
+          "description": "Fills whose drug class and channel had no lead-time entry, so the configured default was used to decide when to warn. Non-zero means some members are being warned on a guess. §4 is explicit: alertLeadDays is never a constant.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 0,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF9F0A",
+                    "value": 1
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "fallback lead time used"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FFD60A"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_missingLeadTimeLookup{job_name=\"$job\"})",
+              "legendFormat": "fallback lead time used"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Fills that changed nothing",
+          "description": "Records that arrived and had no effect. Duplicate claims and reversals with no matching original both mean the upstream feed sent something inconsistent — coverage figures are computed from what is left after these.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 8,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "duplicate claim"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#BF5AF2"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "reversal, no original"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF375F"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_duplicateClaimIdDropped{job_name=\"$job\"})",
+              "legendFormat": "duplicate claim"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_reversalWithoutOriginal{job_name=\"$job\"})",
+              "legendFormat": "reversal, no original"
+            }
+          ],
+          "transparent": true
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Fills never counted at all",
+          "description": "Dead letters could not be decoded, so those members' coverage is wrong and nothing says so. Fills stuck waiting have no drug-class reference yet — they are held, not lost, and are released when the reference arrives.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${ds}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#30D158",
+                    "value": null
+                  },
+                  {
+                    "color": "#FF453A",
+                    "value": 1
+                  }
+                ]
+              },
+              "custom": {
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "fillOpacity": 12,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisBorderShow": false,
+                "barAlignment": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "undecodable (lost)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF453A"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waiting for reference data"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#FF9F0A"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_deadLetterRecords{job_name=\"$job\"})",
+              "legendFormat": "undecodable (lost)"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${ds}"
+              },
+              "expr": "sum(flink_taskmanager_job_task_operator_adherence_bufferedFillsAwaitingRef{job_name=\"$job\"})",
+              "legendFormat": "waiting for reference data"
+            }
+          ],
+          "transparent": true
+        }
+      ],
+      "graphTooltip": 1
+    }
