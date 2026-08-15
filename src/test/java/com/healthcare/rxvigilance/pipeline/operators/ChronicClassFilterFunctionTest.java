@@ -9,6 +9,7 @@ import com.healthcare.rxvigilance.domain.enums.EventType;
 import com.healthcare.rxvigilance.logging.LogCapture;
 import com.healthcare.rxvigilance.metrics.AdherenceMetricsReporter;
 import com.healthcare.rxvigilance.serialization.kryo.RecordKryoSerializer;
+import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.streaming.api.operators.co.CoBroadcastWithNonKeyedOperator;
 import org.apache.flink.streaming.util.BroadcastOperatorTestHarness;
 import org.apache.logging.log4j.Level;
@@ -30,13 +31,24 @@ class ChronicClassFilterFunctionTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        harness = newHarness();
+        harness.open();
+    }
+
+    /**
+     * A fresh harness over a fresh function, with the same Kryo registrations. Extracted so the
+     * restore test can build a second one — the operator has to be new for a restore to prove
+     * anything.
+     */
+    private static BroadcastOperatorTestHarness<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent> newHarness() throws Exception {
         CoBroadcastWithNonKeyedOperator<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent> coBroadcastOperator =
                 new CoBroadcastWithNonKeyedOperator<>(new ChronicClassFilterFunction(),
                         List.of(ChronicClassFilterFunction.NDC_CLASS_DESCRIPTOR));
-        harness = new BroadcastOperatorTestHarness<>(coBroadcastOperator, 1, 1, 0);
-        harness.getExecutionConfig().registerTypeWithKryoSerializer(EnrichedFillEvent.class, RecordKryoSerializer.class);
-        harness.getExecutionConfig().registerTypeWithKryoSerializer(RxFillEvent.class, RecordKryoSerializer.class);
-        harness.open();
+        BroadcastOperatorTestHarness<RxFillEvent, DrugClassRefUpdate, EnrichedFillEvent> created =
+                new BroadcastOperatorTestHarness<>(coBroadcastOperator, 1, 1, 0);
+        created.getExecutionConfig().registerTypeWithKryoSerializer(EnrichedFillEvent.class, RecordKryoSerializer.class);
+        created.getExecutionConfig().registerTypeWithKryoSerializer(RxFillEvent.class, RecordKryoSerializer.class);
+        return created;
     }
 
     @AfterEach
@@ -122,13 +134,16 @@ class ChronicClassFilterFunctionTest {
                 "NDC-A", new DrugClassRef("CHRONIC_CARDIAC", true)), 2L);
         assertThat(harness.extractOutputValues())
                 .containsExactly(new EnrichedFillEvent(eventA, "CHRONIC_CARDIAC"));
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF)).isEqualTo(1L);
 
         harness.processBroadcastElement(new DrugClassRefUpdate(
                 "NDC-B", new DrugClassRef("DIABETES", true)), 3L);
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF)).isZero();
         assertThat(harness.extractOutputValues())
                 .containsExactly(
                         new EnrichedFillEvent(eventA, "CHRONIC_CARDIAC"),
                         new EnrichedFillEvent(eventB, "DIABETES"));
+
     }
 
     @Test
@@ -172,17 +187,47 @@ class ChronicClassFilterFunctionTest {
     }
 
     @Test
-    void broadcastEntriesLoadedGaugeTracksWhatTheBroadcastApplied() throws Exception {
-        // An empty broadcast is the silent failure this gauge exists to expose: every fill gets
-        // buffered forever, no counter moves, and the job looks healthy while emitting nothing.
-        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BROADCAST_ENTRIES_LOADED)).isZero();
+    void bufferedFillsGaugeRisesWhileWaitingForTheRefAndFallsWhenItArrives() throws Exception {
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF)).isZero();
+
+        // no drug-class ref for NDC-CHRONIC yet, so both fills park in the buffer
+        harness.processElement(fillEvent("NDC-CHRONIC", 0), 0L);
+        harness.processElement(fillEvent("NDC-CHRONIC", 0), 1L);
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF)).isEqualTo(2L);
 
         harness.processBroadcastElement(new DrugClassRefUpdate("NDC-CHRONIC",
-                new DrugClassRef("CHRONIC_CARDIAC", true)), 0L);
-        harness.processBroadcastElement(new DrugClassRefUpdate("NDC-DIABETES",
-                new DrugClassRef("DIABETES", true)), 1L);
+                new DrugClassRef("CHRONIC_CARDIAC", true)), 2L);
 
-        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BROADCAST_ENTRIES_LOADED)).isEqualTo(2L);
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF)).isZero();
+        assertThat(harness.extractOutputValues()).hasSize(2);
+    }
+
+    /**
+     * The regression test for #175. The old broadcastEntriesLoaded gauge counted arrivals, so it
+     * read 0 here — the buffer comes back from the snapshot without a single call to
+     * processElement or processBroadcastElement to count it. Nothing flows in this test on
+     * purpose; that is the whole point.
+     */
+    @Test
+    void bufferedFillsGaugeIsCorrectAfterARestoreWithNothingFlowing() throws Exception {
+        harness.processElement(fillEvent("NDC-CHRONIC", 0), 0L);
+        harness.processElement(fillEvent("NDC-CHRONIC", 0), 1L);
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF)).isEqualTo(2L);
+
+        OperatorSubtaskState snapshot = harness.snapshot(1L, 1L);
+        harness.close();
+
+        harness = newHarness();   // reassigned so @AfterEach closes exactly one open harness
+        harness.initializeState(snapshot);
+        harness.open();
+
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF)).isEqualTo(2L);
+
+        // and the count agrees with what the buffer actually holds — the ref drains both
+        harness.processBroadcastElement(new DrugClassRefUpdate("NDC-CHRONIC",
+                new DrugClassRef("CHRONIC_CARDIAC", true)), 2L);
+        assertThat(harness.extractOutputValues()).hasSize(2);
+        assertThat(function().metrics().gaugeValue(AdherenceMetricsReporter.BUFFERED_FILLS_AWAITING_REF)).isZero();
     }
 
     private RxFillEvent fillEvent(String ndcCode, int refillsAuthorized) {

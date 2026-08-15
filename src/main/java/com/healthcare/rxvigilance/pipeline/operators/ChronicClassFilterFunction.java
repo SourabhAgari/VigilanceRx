@@ -32,9 +32,13 @@ public class ChronicClassFilterFunction
     // The first entry and every 500th are enough to tell "loading" from "never arrived".
     private static final long BROADCAST_LOG_EVERY = 500L;
 
-    // Per subtask, reset on restart. Also backs the broadcastEntriesLoaded gauge, read by the
-    // metric reporter thread — AtomicLong for visibility, not contention.
+    // Per subtask, reset on restart: a log sampling counter only, no longer behind a gauge.
     private transient AtomicLong broadcastEntriesApplied;
+
+    // How many fills the buffer is holding. Seeded in initializeState by counting what was
+    // restored, so it is correct straight after a restart with nothing flowing — the hole in
+    // #175. AtomicLong because the metric reporter thread reads it off the task thread.
+    private transient AtomicLong bufferedFills;
 
     public static final MapStateDescriptor<String, DrugClassRef> NDC_CLASS_DESCRIPTOR =
             new MapStateDescriptor<>("ndc-class-state", Types.STRING, TypeInformation.of(DrugClassRef.class));
@@ -48,6 +52,19 @@ public class ChronicClassFilterFunction
     @Override
     public void initializeState(FunctionInitializationContext context) throws Exception {
         bufferState = context.getOperatorStateStore().getListState(BUFFER_DESCRIPTOR);
+
+        // This runs BEFORE open(), and on a restore it is the only place the restored buffer can
+        // be counted — nothing flows through processElement to trigger a recount. open() must
+        // therefore not create bufferedFills; doing so would reset a restored count to zero,
+        // which is exactly the defect #175 records.
+        long restoredCount = 0L;
+        Iterable<RxFillEvent> restored = bufferState.get();
+        if (restored != null) {
+            for (RxFillEvent ignored : restored) {
+                restoredCount++;
+            }
+        }
+        bufferedFills = new AtomicLong(restoredCount);
     }
 
     @Override
@@ -60,7 +77,7 @@ public class ChronicClassFilterFunction
         metrics = AdherenceMetricsReporter.register(getRuntimeContext());
         droppedCounter = metrics.chronicFilterDropped();
         broadcastEntriesApplied = new AtomicLong();
-        metrics.broadcastEntriesLoaded(broadcastEntriesApplied::get);
+        metrics.bufferedFillsAwaitingRef(bufferedFills::get);
     }
 
     @Override
@@ -72,6 +89,7 @@ public class ChronicClassFilterFunction
         DrugClassRef ref = broadcastState.get(event.ndcCode());
         if (ref == null) {
             bufferState.add(event);
+            bufferedFills.incrementAndGet();
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Buffering fill event until its drug class ref arrives: claimId={} ndcCode={}",
                         event.claimId(), event.ndcCode());
@@ -120,6 +138,7 @@ public class ChronicClassFilterFunction
         for (RxFillEvent r : remaining) {
             bufferState.add(r);
         }
+        bufferedFills.set(remaining.size());
 
         if(released > 0 && LOG.isDebugEnabled()) {
             LOG.debug("Released buffered fill events after drug class ref arrived: ndcCode={} released={}",
