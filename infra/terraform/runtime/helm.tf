@@ -99,6 +99,33 @@ resource "helm_release" "kube_prometheus_stack" {
       requests: { cpu: 50m, memory: 384Mi }
       limits:   { memory: 512Mi }
 
+    # Downloaded at pod start, not baked into the image — so the pod needs
+    # egress to grafana.com and takes longer to become Ready. A pod that
+    # cannot reach the plugin repository fails without saying "plugin" (#181).
+    plugins:
+      - googlecloud-logging-datasource
+
+    serviceAccount:
+        # Not pinned by name, unlike external-secrets below: the Workload
+        # Identity binding in platform/grafana.tf names the chart's own generated
+        # account, monitoring/kube-prometheus-stack-grafana, which was confirmed
+        # against the cluster before the binding was written.
+        annotations:
+          iam.gke.io/gcp-service-account: rx-vigilance-grafana@vigilancerx-502702.iam.gserviceaccount.com
+    # Provisioned here rather than as a labelled ConfigMap: the datasources
+    # sidecar has no NAMESPACE set, so it only watches monitoring — a ConfigMap
+    # under k8s/flink (namespace rx-vigilance) would be invisible to it. The uid
+    # is pinned because the #182 log dashboards reference it.
+    additionalDataSources:
+      - name: GCP Cloud Logging
+        type: googlecloud-logging-datasource
+        uid: gcp-cloud-logging
+        access: proxy
+        isDefault: false
+        editable: false
+        jsonData:
+          authenticationType: gce
+
   kube-state-metrics:
     resources:
       requests: { cpu: 20m, memory: 64Mi }
