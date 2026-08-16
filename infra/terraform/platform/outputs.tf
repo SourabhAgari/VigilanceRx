@@ -37,3 +37,8 @@ output "external_secrets_gsa_email" {
   description = "Google service account the ESO pod impersonates via Workload Identity"
   value       = google_service_account.external_secrets.email
 }
+
+output "grafana_gsa_email" {
+  description = "Google service account the Grafana pod impersonates to read Cloud Logging"
+  value       = google_service_account.grafana.email
+}
