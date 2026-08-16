@@ -19,4 +19,4 @@ configurations:
   - imagetransformer.yaml
 images:
   - name: ghcr.io/sourabhagari/rx-vigilance
-    newTag: 5ccafbb821ba92e56dda98f4fdad39f7af10600a
+    newTag: 2014b4759497872a25910e34e528fc66d8135a0a
