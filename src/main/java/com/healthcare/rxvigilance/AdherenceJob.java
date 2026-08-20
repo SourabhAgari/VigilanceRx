@@ -65,6 +65,7 @@ public class AdherenceJob {
         StateBackEndConfig stateBackEndConfig = jobConfig.getStateBackEndConfig();
 
         int defaultAlertDays = params.getInt("alert.lead.days.default", 7);
+
         // Runs on the JobManager at submission, so this prints once per job start rather
         // than once per subtask. Named fields, never the whole ParameterTool: it carries
         // KAFKA_SASL_PASSWORD, and a dump would put it in Cloud Logging (§9).
@@ -89,9 +90,11 @@ public class AdherenceJob {
                     watermarkConfig.idleness(),
                     defaultAlertDays);
         }
-
+        // explicitly define for enriched fill event
         env.getConfig().registerTypeWithKryoSerializer(EnrichedFillEvent.class, RecordKryoSerializer.class);
+        // set default behaviour
         env.getConfig().addDefaultKryoSerializer(Record.class, RecordKryoSerializer.class);
+
         StateBackEndConfig.configureRocksDbBackEnd(env);
 
         env.enableCheckpointing(jobConfig.getCheckpointConfig().intervalMs());
