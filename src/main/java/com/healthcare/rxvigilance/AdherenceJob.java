@@ -27,8 +27,30 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Entry point for the medication adherence streaming job.
+ *
+ * <p>Loads the job configuration, initializes the Flink execution environment,
+ * builds the streaming topology, and submits the job for execution.
+ */
 public class AdherenceJob {
+    /**
+     * Logger for job lifecycle and operational diagnostics.
+     */
     private static final Logger LOG = LoggerFactory.getLogger(AdherenceJob.class);
+
+    /**
+     * Initializes and executes the Flink streaming job.
+     *
+     * <p>The method resolves the job configuration and obtains the
+     * {@link StreamExecutionEnvironment}, which provides the execution context
+     * used to construct the streaming topology. The constructed topology is
+     * then submitted for execution.
+     *
+     * @param args command-line arguments used to configure the job
+     * @throws Exception if configuration loading, topology construction, or
+     *                   job execution fails
+     */
     public static void main(String[] args) throws Exception {
         JobConfig jobConfig = JobConfig.fromArgs(args);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
